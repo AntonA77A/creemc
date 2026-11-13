@@ -19,6 +19,16 @@ struct Config {
     std::string quitMessage = "&e{name} hat den Server verlassen";
     int compressionThreshold = -1;   // C++-Version: ohne Kompression (wird ignoriert)
     bool onlineMode = true;
+    // Spielregeln (Vanilla-Verhalten)
+    bool pvp = true;
+    bool hunger = true;
+    bool fallDamage = true;
+    bool blockDrops = true;
+    bool passiveMobs = true;
+    bool hostileMobs = true;
+    int maxPassive = 16;
+    int maxHostile = 12;
+    bool keepInventory = false;
 
     static Config load(const std::string& path);
 };

@@ -51,6 +51,14 @@ public:
     int food = 20, air = 300, fireTicks = 0, xpTotal = 0, ping = 0;
     double fallDistance = 0;
     bool dead = false;
+    int invulnerableTicks = 0, lastAttacker = 0, regenTimer = 0, breach = 0;
+    float lastDamage = 0;
+    struct UsingItem {
+        int hand = 0;
+        std::string item;
+        int64_t start = 0;
+    };
+    std::optional<UsingItem> usingItem;   // gerade am Essen/Trinken
     std::set<ChunkPos> loadedChunks;
     std::optional<ChunkPos> center;
     std::string tabName;
@@ -73,6 +81,9 @@ public:
     void setSlot(int slot, const std::string& item, int count);
     void syncInventory();
     void closeWindow(bool notifyClient = false);
+    int newWindowId() { nextWindowId_ = nextWindowId_ % 100 + 1; return nextWindowId_; }
+    void openWindow(std::unique_ptr<Window> w);
+    void sendWindowProperty(int prop, int value);
     void kick(const std::string& reason);
     void join();
     void tick();
@@ -81,6 +92,26 @@ public:
     void sendExperience();
     void sendHealth();
     void push(double vx, double vy, double vz);
+
+    // Überleben
+    bool isSurvival() const { return gamemode == 0 || gamemode == 2; }
+    void setHealth(float h);
+    void setFood(int f, float sat = -1);   // sat < 0 = unverändert
+    void heal(float amount);
+    void addExhaustion(float amount);
+    void setAir(int a);
+    int level() const;
+    void giveXp(int points);
+    void setLevel(int level);
+    void takeLevels(int levels);
+    void playSound(const std::string& name, float volume = 1, float pitch = 1, int category = 7);
+    // attacker: Entity-ID (Spieler/Mob), 0 = keiner. -> true, wenn Schaden genommen
+    bool damage(float amount, const std::string& cause = "generic", int attacker = 0);
+    void kill(const std::string& message = "");
+    void respawn();
+    void finishUsingItem();
+    void setHeldItem(const std::string& item, int count = 1);
+    void sendMetadata();
     void setTabName(const std::string& name);   // "" = normaler Name
     void chatAs(const std::string& msg) { chat(msg); }
     void saveData();
@@ -115,6 +146,9 @@ private:
     void onPlace(Reader& r);
     void onCommand(const std::string& line);
     void chat(const std::string& msg);
+    void die(const std::string& message);
+    void trackFall(double dy);
+    void interactEntity(int target, bool attack, int hand);
 
     int teleportId_ = 0;
     std::optional<int> awaitingTeleport_;

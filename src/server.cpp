@@ -7,11 +7,14 @@
 #include <iostream>
 #include <thread>
 
+#include "blocks.hpp"
 #include "buffer.hpp"
 #include "data.hpp"
+#include "physics.hpp"
 #include "placement.hpp"
 #include "player.hpp"
 #include "text.hpp"
+#include "vanilla.hpp"
 #include "version.hpp"
 
 #ifdef _WIN32
@@ -122,6 +125,70 @@ Player* Server::playerByUuid(const Uuid& uuid) {
     return it == players_.end() ? nullptr : it->second.get();
 }
 
+Player* Server::playerById(int id) {
+    for (auto& [u, p] : players_)
+        if (p->entityId == id) return p.get();
+    return nullptr;
+}
+
+// ---- Entities ---------------------------------------------------------------
+
+Entity* Server::spawnEntity(std::unique_ptr<Entity> owned) {
+    Entity* e = owned.get();
+    entities_[e->entityId] = std::move(owned);
+    for (Player* p : players())
+        for (auto& [n, pl] : e->spawnPackets(*p->version)) p->send(n, pl);
+    return e;
+}
+
+Entity* Server::getEntity(int id) {
+    auto it = entities_.find(id);
+    return it == entities_.end() || it->second->removed ? nullptr : it->second.get();
+}
+
+std::vector<Entity*> Server::entities() {
+    std::vector<Entity*> out;
+    out.reserve(entities_.size());
+    for (auto& [id, e] : entities_)
+        if (!e->removed) out.push_back(e.get());
+    return out;
+}
+
+bool Server::entityPosition(int id, double& x, double& y, double& z) {
+    if (Entity* e = getEntity(id)) {
+        x = e->x;
+        y = e->y;
+        z = e->z;
+        return true;
+    }
+    if (Player* p = playerById(id)) {
+        x = p->x;
+        y = p->y;
+        z = p->z;
+        return true;
+    }
+    return false;
+}
+
+ItemEntity* Server::dropItemVelocity(double x, double y, double z, const std::string& item, int count, int pickupDelay,
+                                     double vx, double vy, double vz) {
+    if (item.empty() || count <= 0) return nullptr;
+    auto e = std::make_unique<ItemEntity>(*this, x, y, z, item, count, pickupDelay);
+    e->vx = vx;
+    e->vy = vy;
+    e->vz = vz;
+    return static_cast<ItemEntity*>(spawnEntity(std::move(e)));
+}
+
+ItemEntity* Server::dropItem(double x, double y, double z, const std::string& item, int count, int pickupDelay, bool scatter) {
+    double spread = scatter ? 0.3 : 0.1;
+    return dropItemVelocity(x, y, z, item, count, pickupDelay, randDouble(-spread, spread), 0.2, randDouble(-spread, spread));
+}
+
+Mob* Server::spawnMob(const std::string& type, double x, double y, double z, float health) {
+    return static_cast<Mob*>(spawnEntity(std::make_unique<Mob>(*this, type, x, y, z, health)));
+}
+
 void Server::addPlayer(std::unique_ptr<Player> owned) {
     Player* player = owned.get();
     players_[player->uuid] = std::move(owned);
@@ -147,6 +214,8 @@ void Server::addPlayer(std::unique_ptr<Player> owned) {
         for (auto& [n, pl] : player->spawnPackets(*p->version)) p->send(n, pl);
     }
     player->send("entity_metadata", player->metadata(*player->version));
+    for (Entity* e : entities())
+        for (auto& [n, pl] : e->spawnPackets(*player->version)) player->send(n, pl);
     logx::info(player->name + " ist beigetreten (" + player->address() + ", Minecraft " + player->version->name + ") [" +
                std::to_string(players_.size()) + "/" + std::to_string(config_.maxPlayers) + "]");
     std::string msg = config_.joinMessage;
@@ -388,6 +457,31 @@ void Server::consoleLoop() {
 void Server::doTick() {
     ++tick_;
     for (Player* p : players()) p->tick();
+    while (!later_.empty() && later_.begin()->first <= tick_) {
+        auto f = std::move(later_.begin()->second);
+        later_.erase(later_.begin());
+        try {
+            f();
+        } catch (const std::exception& ex) {
+            logx::error(std::string("Fehler in geplanter Aufgabe: ") + ex.what());
+        }
+    }
+    vanilla::tick(*this);
+    blocks::tick(*this);
+    physics::tick(*this);
+    for (Entity* e : entities()) {
+        try {
+            e->tick();
+            if (!e->removed && tick_ % 2 == 0) e->sync();
+        } catch (const std::exception& ex) {
+            logx::error("Fehler beim Tick von " + e->type + " - Entity wird entfernt: " + ex.what());
+            e->remove();
+        }
+    }
+    for (auto it = entities_.begin(); it != entities_.end();) {
+        if (it->second->removed) it = entities_.erase(it);
+        else ++it;
+    }
     World& w = *world_;
     w.age++;
     if (config_.daylightCycle) w.time++;
@@ -417,6 +511,8 @@ int Server::run() {
     else logx::warn("Online-Modus: AUS - jeder kann mit beliebigem Namen beitreten (online_mode = false)");
     int n = recipes_.loadVanilla();
     logx::info(std::to_string(n) + " Crafting-Rezepte geladen");
+    vanilla::init(*this);
+    physics::init(*this);
     bridge_->start();   // Paper-/Bukkit-Plugins, falls .jar-Dateien in plugins/ liegen
 
     logx::info("Bereite Spawn vor...");

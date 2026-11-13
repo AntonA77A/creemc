@@ -42,6 +42,17 @@ quit_message = "&e{name} hat den Server verlassen"
 # Online-Modus: Spieler werden bei Mojang geprüft und haben ihre echten Skins.
 # false = auch Spieler ohne gekauftes Minecraft dürfen rein (Offline-Modus).
 online_mode = true
+
+# Spielregeln
+pvp = true
+hunger = true
+fall_damage = true
+block_drops = true
+passive_mobs = true
+hostile_mobs = true
+max_passive = 16
+max_hostile = 12
+keep_inventory = false
 )";
 
 // Sehr einfacher TOML-Leser: key = "text" | zahl | true/false, Kommentare mit #
@@ -118,6 +129,15 @@ Config Config::load(const std::string& path) {
     str("join_message", c.joinMessage);
     str("quit_message", c.quitMessage);
     flag("online_mode", c.onlineMode);
+    flag("pvp", c.pvp);
+    flag("hunger", c.hunger);
+    flag("fall_damage", c.fallDamage);
+    flag("block_drops", c.blockDrops);
+    flag("passive_mobs", c.passiveMobs);
+    flag("hostile_mobs", c.hostileMobs);
+    num("max_passive", c.maxPassive);
+    num("max_hostile", c.maxHostile);
+    flag("keep_inventory", c.keepInventory);
     c.motd = text::colorize(c.motd);
     c.chatFormat = text::colorize(c.chatFormat);
     c.joinMessage = text::colorize(c.joinMessage);

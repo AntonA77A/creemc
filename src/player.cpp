@@ -1,15 +1,20 @@
 #include "player.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
+#include <map>
 
+#include "blocks.hpp"
 #include "buffer.hpp"
 #include "connection.hpp"
 #include "data.hpp"
+#include "physics.hpp"
 #include "placement.hpp"
 #include "server.hpp"
 #include "text.hpp"
+#include "vanilla.hpp"
 #include "version.hpp"
 
 namespace {
@@ -170,8 +175,24 @@ void Player::syncInventory() {
     broadcastEquipment();
 }
 
+void Player::openWindow(std::unique_ptr<Window> w) {
+    closeWindow(false);
+    window = std::move(w);
+    Writer p;
+    p.varint(window->id).varint(window->typeId).raw(text::toNbt(window->title));
+    send("open_window", p.out);
+    syncInventory();
+}
+
+void Player::sendWindowProperty(int prop, int value) {
+    Writer w;
+    w.varint(window->id).i16(int16_t(prop)).i16(int16_t(value));
+    send("window_property", w.out);
+}
+
 void Player::closeWindow(bool notifyClient) {
     for (const auto& st : window->returnItems()) dropStack(st.first, st.second);
+    if (window->id != 0) blocks::onClose(*this, *window);
     if (window->id != 0) {
         if (notifyClient) {
             Writer w;
@@ -184,10 +205,12 @@ void Player::closeWindow(bool notifyClient) {
 }
 
 void Player::dropStack(const std::string& item, int count) {
-    // Item-Entities folgen mit dem Vanilla-Teil; bis dahin landet es wieder im Inventar
+    // Wurf in Blickrichtung (wie Vanilla)
     if (item.empty() || count <= 0) return;
-    int rest = addItem(item, count, false);
-    (void)rest;
+    double ry = yaw * 3.14159265358979 / 180.0, rp = pitch * 3.14159265358979 / 180.0;
+    double vx = -std::sin(ry) * std::cos(rp) * 0.3, vz = std::cos(ry) * std::cos(rp) * 0.3;
+    double vy = -std::sin(rp) * 0.3 + 0.1;
+    server.dropItemVelocity(x, y + 1.32, z, item, count, 40, vx, vy, vz);
 }
 
 void Player::kick(const std::string& reason) {
@@ -257,6 +280,265 @@ void Player::sendHealth() {
 }
 
 void Player::push(double vx, double vy, double vz) { send("entity_velocity", version->velocity(entityId, vx, vy, vz)); }
+
+// ---- Überleben --------------------------------------------------------------
+
+void Player::setHealth(float h) {
+    health = std::max(0.0f, std::min(maxHealth, h));
+    sendHealth();
+}
+
+void Player::setFood(int f, float sat) {
+    food = std::max(0, std::min(20, f));
+    if (sat >= 0) saturation = std::max(0.0f, std::min(float(food), sat));
+    sendHealth();
+}
+
+void Player::heal(float amount) {
+    if (!dead && health < maxHealth) setHealth(health + amount);
+}
+
+void Player::addExhaustion(float amount) {
+    // 4.0 Erschöpfung = 1 Sättigung bzw. 1 Hungerpunkt
+    if (!isSurvival() || !server.config().hunger) return;
+    exhaustion += amount;
+    while (exhaustion >= 4.0f) {
+        exhaustion -= 4.0f;
+        if (saturation > 0) saturation = std::max(0.0f, saturation - 1);
+        else food = std::max(0, food - 1);
+        sendHealth();
+    }
+}
+
+void Player::setAir(int a) {
+    if (a == air) return;
+    air = a;
+    server.broadcastPacketV("entity_metadata", [this, a](const Version& v) { return v.airMetadata(entityId, a); });
+}
+
+int Player::level() const {
+    int l;
+    float p;
+    levelForXp(xpTotal, l, p);
+    return l;
+}
+
+void Player::giveXp(int points) {
+    if (points <= 0) return;
+    int before = level();
+    xpTotal += points;
+    sendExperience();
+    if (level() > before && level() % 5 == 0) playSound("minecraft:entity.player.levelup", 0.75f, 1.0f);
+    else playSound("minecraft:entity.experience_orb.pickup", 0.1f, float(0.55 + randDouble() * 0.4));
+}
+
+void Player::setLevel(int l) {
+    xpTotal = xpForLevel(std::max(0, l));
+    sendExperience();
+}
+
+void Player::takeLevels(int levels) {
+    int l;
+    float p;
+    levelForXp(xpTotal, l, p);
+    int n = std::max(0, l - levels);
+    xpTotal = xpForLevel(n) + int(p * float(xpForLevel(n + 1) - xpForLevel(n)));
+    sendExperience();
+}
+
+void Player::playSound(const std::string& n, float volume, float pitch, int category) {
+    send("sound_effect", soundPacket(ns(n), x, y, z, volume, pitch, category));
+}
+
+void Player::sendMetadata() {
+    server.broadcastPacketV("entity_metadata", [this](const Version& v) { return metadata(v); });
+}
+
+namespace {
+std::string deathMessage(Server& server, const Player& p, const std::string& cause, int attacker) {
+    if (attacker) {
+        std::string who;
+        if (Player* a = server.playerById(attacker)) who = a->name;
+        else if (Entity* e = server.getEntity(attacker)) {
+            who = e->type;
+            for (auto& c : who)
+                if (c == '_') c = ' ';
+            if (!who.empty()) who[0] = char(std::toupper((unsigned char)who[0]));
+        }
+        if (!who.empty()) return p.name + " wurde von " + who + " getötet";
+    }
+    static const std::map<std::string, std::string> causes = {
+        {"fall", " ist aus zu großer Höhe gefallen"}, {"lava", " wollte in Lava schwimmen"},
+        {"fire", " ist verbrannt"},                    {"drown", " ist ertrunken"},
+        {"starve", " ist verhungert"},                 {"void", " ist aus der Welt gefallen"},
+        {"explosion", " wurde in die Luft gesprengt"},
+    };
+    auto it = causes.find(cause);
+    return p.name + (it == causes.end() ? std::string(" ist gestorben") : it->second);
+}
+}  // namespace
+
+bool Player::damage(float amount, const std::string& cause, int attacker) {
+    if (dead || !isSurvival() || amount <= 0) return false;
+    // Vanilla: während der kurzen Unverwundbarkeit zählt nur, was über den letzten Treffer hinausgeht
+    if (invulnerableTicks > 0 && amount <= lastDamage) return false;
+    amount = vanilla::reduceDamage(*this, amount, cause, breach);
+    if (server.bridge().listens("player_damage")) {
+        json::Object d;
+        d["player"] = server.bridge().snap(this);
+        d["amount"] = double(amount);
+        d["cause"] = cause;
+        json::Value r = server.bridge().event("player_damage", std::move(d));
+        if (r["cancelled"].asBool()) return false;
+        if (r["amount"].isNumber()) amount = float(r["amount"].asDouble());
+    }
+    if (amount <= 0) return false;
+    float applied = invulnerableTicks > 0 ? amount - lastDamage : amount;
+    if (invulnerableTicks <= 0) invulnerableTicks = 10;
+    lastDamage = amount;
+    if (attacker) lastAttacker = attacker;
+    addExhaustion(0.1f);
+    setHealth(health - applied);
+    Writer hurt;
+    hurt.varint(entityId).f32(yaw);
+    server.broadcastPacket("hurt_animation", hurt.out);
+    server.playSound("minecraft:entity.player.hurt", x, y, z, 1.0f, 1.0f, 7);
+    double ax, ay, az;
+    if (attacker && server.entityPosition(attacker, ax, ay, az)) {
+        double dx = x - ax, dz = z - az;
+        double d = std::hypot(dx, dz);
+        if (d < 1e-6) d = 1;
+        push(dx / d * 0.4, 0.36, dz / d * 0.4);
+    }
+    if (health <= 0) die(deathMessage(server, *this, cause, attacker));
+    return true;
+}
+
+void Player::kill(const std::string& message) {
+    if (dead) return;
+    setHealth(0);
+    die(message.empty() ? name + " ist gestorben" : message);
+}
+
+void Player::die(const std::string& rawMessage) {
+    dead = true;
+    usingItem.reset();
+    closeWindow();
+    std::string message = rawMessage;
+    bool keep = server.config().keepInventory;
+    if (server.bridge().listens("player_death")) {
+        json::Object d;
+        d["player"] = server.bridge().snap(this);
+        d["message"] = message;
+        d["keep_inventory"] = keep;
+        json::Value r = server.bridge().event("player_death", std::move(d));
+        if (r["message"].isString()) message = r["message"].asString();
+        if (r["keep_inventory"].isBool()) keep = r["keep_inventory"].asBool();
+    }
+    if (!keep) {
+        std::vector<Stack> drops;
+        for (const auto& [s, st] : inventory)
+            if (s != 0) drops.push_back(st);
+        inventory.clear();
+        syncInventory();
+        int dropXp = std::min(100, level() * 7);   // Vanilla: 7 Punkte pro Stufe, höchstens 100
+        xpTotal = 0;
+        sendExperience();
+        for (const auto& st : drops) server.dropItem(x, y + 1, z, st.first, st.second, 40, true);
+        (void)dropXp;
+    }
+    Writer w;
+    w.varint(entityId).raw(text::toNbt(message));
+    send("death_combat", w.out);
+    Writer st;
+    st.i32(entityId).i8(3);
+    server.broadcastPacket("entity_status", st.out, this);
+    if (!message.empty()) server.broadcast(sec("7") + message);
+}
+
+void Player::respawn() {
+    if (!dead) return;
+    double sx, sy, sz;
+    server.world().spawnPoint(sx, sy, sz);
+    dead = false;
+    health = 20;
+    food = 20;
+    saturation = 5;
+    exhaustion = 0;
+    fallDistance = 0;
+    fireTicks = 0;
+    air = 300;
+    invulnerableTicks = 0;
+    lastDamage = 0;
+    lastAttacker = 0;
+    const Config& cfg = server.config();
+    send("respawn", version->respawn(gamemode, cfg.generator == "flat"));
+    Writer ev;
+    ev.u8(13).f32(0);
+    send("game_event", ev.out);
+    sendAbilities();
+    sendPermissionLevel();   // der Client vergisst sie beim Respawn
+    sendHealth();
+    sendExperience();
+    loadedChunks.clear();
+    center.reset();
+    chunkQueue_.clear();
+    x = sx;
+    y = sy;
+    z = sz;
+    Writer rm;
+    rm.varint(1).varint(entityId);
+    server.broadcastPacket("remove_entities", rm.out, this);
+    for (Player* p : server.players()) {
+        if (p == this) continue;
+        if (!p->dead)
+            for (auto& [n, pl] : p->spawnPackets(*version)) send(n, pl);
+        for (auto& [n, pl] : spawnPackets(*p->version)) p->send(n, pl);
+    }
+    for (Entity* e : server.entities())
+        for (auto& [n, pl] : e->spawnPackets(*version)) send(n, pl);
+    send("entity_metadata", metadata(*version));
+    syncInventory();
+    teleport(x, y, z);
+}
+
+void Player::finishUsingItem() {
+    usingItem.reset();
+    Writer w;
+    w.i32(entityId).i8(9);
+    send("entity_status", w.out);
+}
+
+void Player::setHeldItem(const std::string& item, int count) { setSlot(36 + heldSlot, item, count); }
+
+void Player::trackFall(double dy) {
+    static int water = data::blockState("water");
+    int feet = server.world().getBlock(int(std::floor(x)), int(std::floor(y)), int(std::floor(z)));
+    if (flying || !isSurvival() || feet == water || dead) {
+        fallDistance = 0;
+        return;
+    }
+    if (!onGround && dy < 0) {
+        fallDistance -= dy;
+    } else if (onGround && fallDistance > 0) {
+        double fall = fallDistance;
+        fallDistance = 0;
+        vanilla::onLand(*this, fall);
+    }
+}
+
+void Player::interactEntity(int target, bool attack, int hand) {
+    if (target == entityId || dead || gamemode == 3) return;
+    double tx, ty, tz;
+    if (!server.entityPosition(target, tx, ty, tz)) return;
+    if ((tx - x) * (tx - x) + (ty - y) * (ty - y) + (tz - z) * (tz - z) > 36) return;
+    if (attack) {
+        addExhaustion(0.1f);
+        vanilla::onAttack(*this, target);
+    } else {
+        vanilla::onInteractEntity(*this, target, hand);
+    }
+}
 
 void Player::setTabName(const std::string& n) {
     tabName = n;
@@ -451,6 +733,7 @@ void Player::broadcastEquipment() {
 // ---- Tick -------------------------------------------------------------------
 
 void Player::tick() {
+    if (invulnerableTicks > 0 && --invulnerableTicks == 0) lastDamage = 0;
     if (fireTicks > 0 && --fireTicks == 0)
         server.broadcastPacketV("entity_metadata", [this](const Version& v) { return metadata(v); });
 }
@@ -514,6 +797,14 @@ void Player::handlePacket(int pid, const Bytes& payload) {
         move(x, y, z, ny2, np, r.u8());
     } else if (n == "c_on_ground") {
         onGround = r.u8() & 1;
+        trackFall(0);
+    } else if (n == "c_client_command") {
+        if (r.varint() == 0) respawn();
+    } else if (n == "c_use_entity") {
+        auto in = version->readInteract(r);
+        interactEntity(in.target, in.attack, in.hand);
+    } else if (n == "c_attack") {
+        interactEntity(r.varint(), true, 0);
     } else if (n == "c_player_abilities") {
         flying = (r.i8() & 0x02) && (gamemode == 1 || gamemode == 3);
     } else if (n == "c_entity_action") {
@@ -553,6 +844,7 @@ void Player::handlePacket(int pid, const Bytes& payload) {
         int mode = r.varint();
         if (wid == window->id && !dead) window->click(slot, button, mode);
         syncInventory();
+        if (auto* cw = dynamic_cast<blocks::ContainerWindow*>(window.get())) blocks::syncViewers(server, this, cw->positions);
     } else if (n == "c_close_window") {
         if (r.varint() == window->id) closeWindow();
     } else if (n == "c_change_gamemode") {   // F3+F4 ab 1.21.6
@@ -570,7 +862,9 @@ void Player::handlePacket(int pid, const Bytes& payload) {
         int hand = r.varint();
         int seq = r.varint();
         auto it = inventory.find(hand == 0 ? 36 + heldSlot : 45);
-        interactEvent(hand, it == inventory.end() ? "" : it->second.first, 0, 0, 0, -1, false);
+        std::string item = it == inventory.end() ? "" : it->second.first;
+        if (!item.empty() && !dead) usingItem = UsingItem{hand, item, server.tick()};
+        if (!interactEvent(hand, item, 0, 0, 0, -1, false)) vanilla::onUseItem(*this, hand, item);
         ack(seq);
     }
 }
@@ -661,7 +955,10 @@ void Player::move(double nx, double ny, double nz, float nyaw, float npitch, int
     }
     bool same = nx == x && ny == y && nz == z && nyaw == yaw && npitch == pitch;
     onGround = flags & 1;
-    if (same) return;
+    if (same) {
+        trackFall(0);
+        return;
+    }
     if (server.bridge().listens("player_move")) {
         json::Object d;
         d["player"] = server.bridge().snap(this);
@@ -679,12 +976,15 @@ void Player::move(double nx, double ny, double nz, float nyaw, float npitch, int
         }
     }
     int oldCx = int(std::floor(x)) >> 4, oldCz = int(std::floor(z)) >> 4;
+    double ox = x, oy = y, oz = z;
     x = nx;
     y = ny;
     z = nz;
     yaw = nyaw;
     pitch = npitch;
     broadcastPosition();
+    vanilla::onMove(*this, ox, oy, oz);
+    trackFall(y - oy);
     if ((int(std::floor(x)) >> 4) != oldCx || (int(std::floor(z)) >> 4) != oldCz) requestChunkUpdate();
 }
 
@@ -704,7 +1004,10 @@ void Player::onDig(Reader& r) {
         }
         return;
     }
-    if (status == 5) return;
+    if (status == 5) {   // Benutzen losgelassen (z.B. Essen abgebrochen)
+        usingItem.reset();
+        return;
+    }
     if (status == 6) {   // Hände tauschen (F)
         Stack main = inventory.count(36 + heldSlot) ? inventory[36 + heldSlot] : Stack{};
         Stack off = inventory.count(45) ? inventory[45] : Stack{};
@@ -735,6 +1038,8 @@ void Player::onDig(Reader& r) {
             }
         }
         if (state != 0) {
+            blocks::dropContents(server, bx, by, bz);   // Kisten-/Ofeninhalt fällt heraus
+            if (gamemode == 0) vanilla::onBlockBreak(*this, bx, by, bz, state);
             server.setBlockState(bx, by, bz, 0);
             auto other = placement::otherPart(bx, by, bz, state);   // Tür, Bett, hohe Pflanze
             if (other) {
@@ -769,7 +1074,32 @@ void Player::onPlace(Reader& r) {
         ack(seq);
         return;
     }
-    if (it == inventory.end() || gamemode == 2 || gamemode == 3 || face < 0 || face > 5 || dead) {
+    if (face < 0 || face > 5 || dead) {
+        ack(seq);
+        return;
+    }
+    {
+        // Rechtsklick auf Kiste, Ofen, Tür, Hebel ... (Schleichen mit Item in der Hand = bauen)
+        std::string clickedName = data::blockName(w.getBlock(cx, cy, cz));
+        std::string heldName = it == inventory.end() ? "" : it->second.first;
+        bool useBlock = gamemode != 3 && (!sneaking || heldName.empty());
+        if (useBlock && hand == 0 && blocks::openBlock(*this, clickedName, cx, cy, cz)) {
+            ack(seq);
+            return;
+        }
+        if (useBlock && hand == 1 && blocks::isInteractive(clickedName)) {
+            ack(seq);
+            return;
+        }
+        if (gamemode != 3 && !heldName.empty() &&
+            vanilla::useItemOnBlock(*this, hand, heldName, cx, cy, cz, cx + placement::FACE_OFFSETS[face][0],
+                                    cy + placement::FACE_OFFSETS[face][1], cz + placement::FACE_OFFSETS[face][2])) {
+            resyncBlock(cx, cy, cz);
+            ack(seq);
+            return;
+        }
+    }
+    if (it == inventory.end() || gamemode == 2 || gamemode == 3) {
         ack(seq);
         return;
     }
@@ -794,6 +1124,7 @@ void Player::onPlace(Reader& r) {
         for (const auto& p : parts)
             if (data::SOLID[size_t(p.state)] && server.playerAtBlock(p.x, p.y, p.z)) ok = false;   // nicht in Spieler
     if (ok && blockName == "minecraft:redstone_wire" && !data::SOLID[size_t(w.getBlock(tx, ty - 1, tz))]) ok = false;
+    if (ok && !physics::canPlace(server, blockName, tx, ty, tz)) ok = false;   // Saat nur auf Ackerboden
     if (ok && server.bridge().listens("block_place")) {
         json::Object d;
         d["player"] = server.bridge().snap(this);
@@ -812,6 +1143,7 @@ void Player::onPlace(Reader& r) {
     }
     for (const auto& p : parts) server.setBlockState(p.x, p.y, p.z, p.state);
     placement::connectChest(server, tx, ty, tz, sneaking);
+    blocks::onPlaced(server, tx, ty, tz, blockName);
     if (gamemode == 0) setSlot(slot, held.first, held.second - 1);
     ack(seq);
 }

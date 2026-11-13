@@ -16,6 +16,7 @@
 #include "commands.hpp"
 #include "config.hpp"
 #include "connection.hpp"
+#include "entity.hpp"
 #include "recipes.hpp"
 #include "world.hpp"
 
@@ -47,6 +48,18 @@ public:
     void addPlayer(std::unique_ptr<Player> p);
     void removePlayer(Player* p);
     int nextEntityId() { return ++entityId_; }
+    Player* playerById(int entityId);
+
+    // Entities (Items, Mobs)
+    Entity* spawnEntity(std::unique_ptr<Entity> e);
+    Entity* getEntity(int entityId);
+    std::vector<Entity*> entities();
+    bool entityPosition(int entityId, double& x, double& y, double& z);   // Spieler oder Entity
+    ItemEntity* dropItem(double x, double y, double z, const std::string& item, int count, int pickupDelay = 10,
+                         bool scatter = false);
+    ItemEntity* dropItemVelocity(double x, double y, double z, const std::string& item, int count, int pickupDelay,
+                                 double vx, double vy, double vz);
+    Mob* spawnMob(const std::string& type, double x, double y, double z, float health);
     bool isOp(const std::string& name) const;
     void setOp(const std::string& name, bool value);
 
@@ -76,6 +89,7 @@ public:
     void refreshCommands();
     void dispatchCommand(CommandSender& sender, const std::string& line);
     void requestStop() { stop_ = true; wake(); }
+    void runLater(int ticks, std::function<void()> f) { later_.emplace(tick_ + std::max(1, ticks), std::move(f)); }
     void save();
     void wake();
 
@@ -100,6 +114,8 @@ private:
     std::mutex newConnMutex_;
     std::vector<std::shared_ptr<Connection>> newConns_;
     std::map<Uuid, std::unique_ptr<Player>> players_;
+    std::map<int, std::unique_ptr<Entity>> entities_;
+    std::multimap<int64_t, std::function<void()>> later_;
     std::set<std::string> ops_;
     int entityId_ = 0;
     int64_t tick_ = 0;
