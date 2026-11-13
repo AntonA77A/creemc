@@ -12,6 +12,7 @@
 #include "data.hpp"
 #include "physics.hpp"
 #include "placement.hpp"
+#include "redstone.hpp"
 #include "player.hpp"
 #include "text.hpp"
 #include "vanilla.hpp"
@@ -469,6 +470,7 @@ void Server::doTick() {
     vanilla::tick(*this);
     blocks::tick(*this);
     physics::tick(*this);
+    redstone::tick(*this);
     for (Entity* e : entities()) {
         try {
             e->tick();
@@ -512,6 +514,7 @@ int Server::run() {
     int n = recipes_.loadVanilla();
     logx::info(std::to_string(n) + " Crafting-Rezepte geladen");
     vanilla::init(*this);
+    redstone::init(*this);
     physics::init(*this);
     bridge_->start();   // Paper-/Bukkit-Plugins, falls .jar-Dateien in plugins/ liegen
 

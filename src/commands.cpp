@@ -252,8 +252,22 @@ void Commands::registerBuiltins() {
              Player* p = s.asPlayer();
              int x = int(std::floor(coord(a[0], p ? p->x : 0))), y = int(std::floor(coord(a[1], p ? p->y : 0))),
                  z = int(std::floor(coord(a[2], p ? p->z : 0)));
-             int state = data::blockState(a[3]);
-             if (state < 0) throw CommandError("Unbekannter Block: " + a[3]);
+             // Vanilla-Schreibweise mit Zuständen: lever[face=wall,facing=west,powered=true]
+             std::string spec = a[3], blockName = spec;
+             std::map<std::string, std::string> stateProps;
+             size_t br = spec.find('[');
+             if (br != std::string::npos) {
+                 blockName = spec.substr(0, br);
+                 std::string inner = spec.substr(br + 1);
+                 if (!inner.empty() && inner.back() == ']') inner.pop_back();
+                 for (const auto& kv : split(inner, ',', true)) {
+                     size_t eq = kv.find('=');
+                     if (eq != std::string::npos) stateProps[trim(kv.substr(0, eq))] = trim(kv.substr(eq + 1));
+                 }
+             }
+             int state = data::blockState(blockName);
+             if (state < 0) throw CommandError("Unbekannter Block: " + blockName);
+             if (!stateProps.empty()) state = data::withProps(state, stateProps);
              srv.setBlockState(x, y, z, state);
              s.sendMessage(S("aBlock bei ") + std::to_string(x) + " " + std::to_string(y) + " " + std::to_string(z) + " gesetzt.");
          }});

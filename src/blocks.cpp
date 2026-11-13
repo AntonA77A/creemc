@@ -8,6 +8,7 @@
 
 #include "buffer.hpp"
 #include "data.hpp"
+#include "enchanting.hpp"
 #include "entity.hpp"
 #include "placement.hpp"
 #include "player.hpp"
@@ -610,6 +611,7 @@ bool isInteractive(const std::string& block) {
 
 bool openBlock(Player& p, const std::string& block, int x, int y, int z) {
     Server& s = p.server;
+    if (enchanting::open(p, block, x, y, z)) return true;
     if (block == "minecraft:crafting_table") {
         p.openWindow(std::make_unique<CraftingWindow>(p, p.newWindowId()));
         return true;

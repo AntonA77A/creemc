@@ -10,6 +10,7 @@
 #include "buffer.hpp"
 #include "connection.hpp"
 #include "data.hpp"
+#include "enchanting.hpp"
 #include "physics.hpp"
 #include "placement.hpp"
 #include "server.hpp"
@@ -845,6 +846,11 @@ void Player::handlePacket(int pid, const Bytes& payload) {
         if (wid == window->id && !dead) window->click(slot, button, mode);
         syncInventory();
         if (auto* cw = dynamic_cast<blocks::ContainerWindow*>(window.get())) blocks::syncViewers(server, this, cw->positions);
+    } else if (n == "c_enchant_item") {   // Knopf im Fenster (Zaubertisch: Option 0-2)
+        int wid = r.varint();
+        enchanting::button(*this, wid, r.varint());
+    } else if (n == "c_name_item") {      // Amboss: neuer Name (bei jedem Tastendruck)
+        enchanting::rename(*this, r.string(32767));
     } else if (n == "c_close_window") {
         if (r.varint() == window->id) closeWindow();
     } else if (n == "c_change_gamemode") {   // F3+F4 ab 1.21.6
