@@ -1,0 +1,14 @@
+# Build-Ergebnisse
+build/
+build-linux/
+dist/
+bridge/classes/
+
+# Laufzeitdaten, falls der Server testweise hier gestartet wird
+world/
+playerdata/
+logs/
+plugins/
+.creemc/
+config.toml
+ops.json

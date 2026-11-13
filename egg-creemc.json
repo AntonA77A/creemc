@@ -1,0 +1,83 @@
+{
+    "_comment": "CreeMC-Egg für Pterodactyl/Pelican. Im Panel unter Admin -> Nests -> Import Egg.",
+    "meta": {
+        "version": "PTDL_v2",
+        "update_url": "https://github.com/AntonA77A/creemc/releases/latest/download/egg-creemc.json"
+    },
+    "exported_at": "2026-11-13T12:00:00+00:00",
+    "name": "CreeMC",
+    "author": "admin@example.com",
+    "description": "CreeMC: schneller Minecraft-Server in C++ für 1.21 bis 26.3 gleichzeitig, mit Online-Modus und Paper-/Spigot-Plugins (.jar in plugins/, braucht das Java-Image). Wird bei der Installation automatisch aus dem neuesten GitHub-Release gebaut (github.com/AntonA77A/creemc).",
+    "features": null,
+    "docker_images": {
+        "Java 21 (für Paper-/Spigot-Plugins)": "ghcr.io/pterodactyl/yolks:java_21",
+        "Ohne Java": "ghcr.io/pterodactyl/yolks:debian"
+    },
+    "file_denylist": [],
+    "startup": "./creemc",
+    "config": {
+        "files": "{\n    \"config.toml\": {\n        \"parser\": \"file\",\n        \"find\": {\n            \"host = \": \"host = \\\"0.0.0.0\\\"\",\n            \"port = \": \"port = {{server.build.default.port}}\",\n            \"max_players = \": \"max_players = {{server.build.env.MAX_PLAYERS}}\",\n            \"online_mode = \": \"online_mode = {{server.build.env.ONLINE_MODE}}\",\n            \"view_distance = \": \"view_distance = {{server.build.env.VIEW_DISTANCE}}\"\n        }\n    }\n}",
+        "startup": "{\n    \"done\": \"Fertig (\"\n}",
+        "logs": "{}",
+        "stop": "stop"
+    },
+    "scripts": {
+        "installation": {
+            "script": "#!/bin/ash\n# CreeMC installieren (läuft im Pterodactyl-Installationscontainer, Alpine Linux)\n#  1. DOWNLOAD_URL gesetzt  -> fertige Linux-Datei herunterladen\n#  2. sonst: Quellcode bauen -> aus SOURCE_URL oder aus der hochgeladenen creemc-source.tar.gz\nset -e\ncd /mnt/server\nmkdir -p plugins\n\nif [ -n \"${DOWNLOAD_URL}\" ]; then\n    apk add --no-cache curl >/dev/null\n    echo \"Lade fertiges CreeMC von ${DOWNLOAD_URL} ...\"\n    curl -fsSL -o creemc \"${DOWNLOAD_URL}\"\nelse\n    echo \"Installiere Compiler und Bibliotheken ...\"\n    apk add --no-cache build-base cmake openssl-dev openssl-libs-static linux-headers curl tar >/dev/null\n    SRC=/tmp/creemc-src\n    rm -rf \"${SRC}\" /tmp/creemc-build\n    mkdir -p \"${SRC}\"\n    if [ -n \"${SOURCE_URL}\" ]; then\n        echo \"Lade Quellcode von ${SOURCE_URL} ...\"\n        curl -fsSL -o /tmp/creemc-source.tar.gz \"${SOURCE_URL}\"\n        ARCHIVE=/tmp/creemc-source.tar.gz\n    elif [ -f /mnt/server/creemc-source.tar.gz ]; then\n        ARCHIVE=/mnt/server/creemc-source.tar.gz\n    else\n        echo \"FEHLER: Kein Quellcode gefunden.\"\n        echo \"Lade 'creemc-source.tar.gz' per Dateimanager in den Server-Ordner hoch und installiere neu,\"\n        echo \"oder trage eine Quellcode- bzw. Download-URL in den Server-Einstellungen ein.\"\n        exit 1\n    fi\n    tar -xzf \"${ARCHIVE}\" -C \"${SRC}\"\n    CMAKE_FILE=$(grep -l \"project(creemc\" $(find \"${SRC}\" -name CMakeLists.txt) | head -n 1)\n    if [ -z \"${CMAKE_FILE}\" ]; then\n        echo \"FEHLER: Im Archiv ist kein CreeMC-Quellcode (CMakeLists.txt fehlt).\"\n        exit 1\n    fi\n    DIR=$(dirname \"${CMAKE_FILE}\")\n    echo \"Baue CreeMC (das dauert ein bis zwei Minuten) ...\"\n    cmake -S \"${DIR}\" -B /tmp/creemc-build -DCMAKE_BUILD_TYPE=Release -DCREEMC_STATIC=ON\n    cmake --build /tmp/creemc-build -j 2\n    strip /tmp/creemc-build/creemc\n    cp /tmp/creemc-build/creemc ./creemc\n    rm -rf \"${SRC}\" /tmp/creemc-build\nfi\nchmod +x creemc\n\nif [ ! -f config.toml ]; then\ncat > config.toml <<EOF\n# CreeMC Konfiguration (Port, Spielerzahl, Online-Modus und Sichtweite stellt das Panel ein)\nhost = \"0.0.0.0\"\nport = ${SERVER_PORT:-25565}\nmotd = \"&a&lCreeMC &7- &fC++-Minecraft-Server\"\nmax_players = ${MAX_PLAYERS:-20}\nview_distance = ${VIEW_DISTANCE:-8}\ngamemode = 0\ndifficulty = 1\nworld_name = \"world\"\ngenerator = \"normal\"\nseed = 12345\ndaylight_cycle = true\nchat_format = \"&7{name}&8: &f{message}\"\njoin_message = \"&e{name} hat den Server betreten\"\nquit_message = \"&e{name} hat den Server verlassen\"\nonline_mode = ${ONLINE_MODE:-true}\nEOF\nfi\necho \"Installation fertig.\"\n",
+            "container": "alpine:3.20",
+            "entrypoint": "ash"
+        }
+    },
+    "variables": [
+        {
+            "name": "Quellcode-URL",
+            "description": "Woher der Quellcode geladen wird (Standard: neueste Version von GitHub). Leer lassen, um stattdessen eine hochgeladene creemc-source.tar.gz zu bauen.",
+            "env_variable": "SOURCE_URL",
+            "default_value": "https://github.com/AntonA77A/creemc/releases/latest/download/creemc-source.tar.gz",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|url",
+            "field_type": "text"
+        },
+        {
+            "name": "Download-URL (fertige Datei)",
+            "description": "Optional: Link zu einer fertig gebauten Linux-Datei 'creemc'. Wenn gesetzt, wird nichts gebaut.",
+            "env_variable": "DOWNLOAD_URL",
+            "default_value": "",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "nullable|url",
+            "field_type": "text"
+        },
+        {
+            "name": "Online-Modus",
+            "description": "true = nur Spieler mit gekauftem Minecraft (Mojang-Login, Skins). false = jeder darf rein.",
+            "env_variable": "ONLINE_MODE",
+            "default_value": "true",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|string|in:true,false",
+            "field_type": "text"
+        },
+        {
+            "name": "Maximale Spieler",
+            "description": "Wie viele Spieler gleichzeitig online sein dürfen.",
+            "env_variable": "MAX_PLAYERS",
+            "default_value": "20",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:1,1000",
+            "field_type": "text"
+        },
+        {
+            "name": "Sichtweite",
+            "description": "Sichtweite in Chunks (2-32). Höher = mehr CPU-Last.",
+            "env_variable": "VIEW_DISTANCE",
+            "default_value": "8",
+            "user_viewable": true,
+            "user_editable": true,
+            "rules": "required|integer|between:2,32",
+            "field_type": "text"
+        }
+    ]
+}

@@ -1,0 +1,4 @@
+# Shell-Skripte laufen unter Linux: immer LF-Zeilenenden
+*.sh text eol=lf
+tools/egg-install.sh text eol=lf
+*.jar binary

@@ -1,0 +1,97 @@
+package org.bukkit;
+
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+import java.util.logging.Logger;
+import net.kyori.adventure.text.Component;
+import org.bukkit.command.CommandSender;
+import org.bukkit.command.ConsoleCommandSender;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.entity.Player;
+import org.bukkit.plugin.PluginManager;
+import org.bukkit.scheduler.BukkitScheduler;
+
+public final class Bukkit {
+    private static Server server;
+
+    private Bukkit() { }
+
+    public static Server getServer() { return server; }
+
+    public static void setServer(Server s) {
+        if (server != null) throw new UnsupportedOperationException("Cannot redefine singleton Server");
+        server = s;
+    }
+
+    public static String getName() { return server.getName(); }
+
+    public static String getVersion() { return server.getVersion(); }
+
+    public static String getBukkitVersion() { return server.getBukkitVersion(); }
+
+    public static String getMinecraftVersion() { return server.getMinecraftVersion(); }
+
+    public static Collection<? extends Player> getOnlinePlayers() { return server.getOnlinePlayers(); }
+
+    public static int getMaxPlayers() { return server.getMaxPlayers(); }
+
+    public static int getPort() { return server.getPort(); }
+
+    public static String getIp() { return server.getIp(); }
+
+    public static String getMotd() { return server.getMotd(); }
+
+    public static boolean getOnlineMode() { return server.getOnlineMode(); }
+
+    public static int getViewDistance() { return server.getViewDistance(); }
+
+    public static GameMode getDefaultGameMode() { return server.getDefaultGameMode(); }
+
+    public static Player getPlayer(String name) { return server.getPlayer(name); }
+
+    public static Player getPlayerExact(String name) { return server.getPlayerExact(name); }
+
+    public static Player getPlayer(UUID id) { return server.getPlayer(id); }
+
+    public static List<Player> matchPlayer(String name) { return server.matchPlayer(name); }
+
+    @Deprecated
+    public static OfflinePlayer getOfflinePlayer(String name) { return server.getOfflinePlayer(name); }
+
+    public static OfflinePlayer getOfflinePlayer(UUID id) { return server.getOfflinePlayer(id); }
+
+    public static PluginManager getPluginManager() { return server.getPluginManager(); }
+
+    public static BukkitScheduler getScheduler() { return server.getScheduler(); }
+
+    public static World getWorld(String name) { return server.getWorld(name); }
+
+    public static World getWorld(UUID uid) { return server.getWorld(uid); }
+
+    public static List<World> getWorlds() { return server.getWorlds(); }
+
+    public static int broadcastMessage(String message) { return server.broadcastMessage(message); }
+
+    public static int broadcast(String message, String permission) { return server.broadcast(message, permission); }
+
+    public static int broadcast(Component message) { return server.broadcast(message); }
+
+    public static ConsoleCommandSender getConsoleSender() { return server.getConsoleSender(); }
+
+    public static boolean dispatchCommand(CommandSender sender, String commandLine) { return server.dispatchCommand(sender, commandLine); }
+
+    public static PluginCommand getPluginCommand(String name) { return server.getPluginCommand(name); }
+
+    public static Logger getLogger() { return server.getLogger(); }
+
+    public static boolean isPrimaryThread() { return server.isPrimaryThread(); }
+
+    public static void shutdown() { server.shutdown(); }
+
+    public static double[] getTPS() { return server.getTPS(); }
+
+    public static void reload() { server.reload(); }
+
+    public static void savePlayers() { server.savePlayers(); }
+}
