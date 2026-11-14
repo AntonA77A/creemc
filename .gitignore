@@ -12,3 +12,7 @@ plugins/
 .creemc/
 config.toml
 ops.json
+
+# Beispiel-Plugin (Build)
+beispiel-plugin/classes/
+beispiel-plugin/*.jar

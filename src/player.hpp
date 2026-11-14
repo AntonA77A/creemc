@@ -89,6 +89,7 @@ public:
     void tick();
     void tickKeepAlive();
     void sendPermissionLevel();
+    void sendRuleFlags();
     void sendExperience();
     void sendHealth();
     void push(double vx, double vy, double vz);

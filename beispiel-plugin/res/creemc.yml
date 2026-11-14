@@ -1,0 +1,5 @@
+name: Beispiel
+version: 1.0
+main: beispiel.BeispielPlugin
+description: Beispiel für die eigene CreeMC-API
+author: CreeMC

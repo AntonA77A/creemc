@@ -8,12 +8,14 @@
 #include <filesystem>
 #include <thread>
 
+#include "blocks.hpp"
 #include "buffer.hpp"
 #include "connection.hpp"
 #include "data.hpp"
 #include "player.hpp"
 #include "server.hpp"
 #include "text.hpp"
+#include "vanilla.hpp"
 #include "version.hpp"
 
 #ifdef _WIN32
@@ -693,7 +695,21 @@ void JavaBridge::handleCall(const json::Value& m) {
         int state = parseState(m["block"].asString());
         if (state >= 0) s.setBlockState(int(m["x"].asInt()), int(m["y"].asInt()), int(m["z"].asInt()), state);
     } else if (op == "break_block") {
-        s.setBlockState(int(m["x"].asInt()), int(m["y"].asInt()), int(m["z"].asInt()), 0);
+        int x = int(m["x"].asInt()), y = int(m["y"].asInt()), z = int(m["z"].asInt());
+        int state = s.world().getBlock(x, y, z);
+        if (m["drops"].asBool() && state != 0) {
+            blocks::dropContents(s, x, y, z);
+            for (auto& [item, c] : vanilla::blockDrops(data::blockName(state), "", true)) s.dropItem(x + .5, y + .3, z + .5, item, c);
+        }
+        s.setBlockState(x, y, z, 0);
+    } else if (op == "explode") {   // ---- eigene CreeMC-API ----
+        vanilla::explode(s, m["x"].asDouble(), m["y"].asDouble(), m["z"].asDouble(), std::max(0.1, m["power"].asDouble(4)),
+                         m["break"].asBool(true));
+    } else if (op == "tnt") {
+        vanilla::spawnTnt(s, m["x"].asDouble(), m["y"].asDouble(), m["z"].asDouble(), int(m["fuse"].asInt(80)));
+    } else if (op == "drop_item") {
+        std::string item = m["item"].asString();
+        if (data::isItem(item)) s.dropItem(m["x"].asDouble(), m["y"].asDouble(), m["z"].asDouble(), ns(item), int(m["count"].asInt(1)));
     } else if (op == "sound") {
         if (p) {
             Bytes pk = soundPacket(m["name"].asString(), p->x, p->y, p->z, float(m["volume"].asDouble(1)), float(m["pitch"].asDouble(1)), 7);
@@ -786,6 +802,17 @@ void JavaBridge::handleCall(const json::Value& m) {
     } else if (op == "fire") {
         p->fireTicks = int(m["ticks"].asInt());
         s.broadcastPacketV("entity_metadata", [p](const Version& v) { return p->metadata(v); });
+    } else if (op == "heal") {
+        p->setHealth(p->maxHealth);
+        p->setFood(20, 5.0f);
+        p->fireTicks = 0;
+        p->sendMetadata();
+    } else if (op == "kill") {
+        p->kill(m["message"].str());
+    } else if (op == "damage_cause") {
+        p->damage(float(m["amount"].asDouble()), m["cause"].str("generic"));
+    } else if (op == "give_xp_sound") {
+        p->giveXp(int(m["value"].asInt()));
     }
 }
 
@@ -825,6 +852,55 @@ json::Value JavaBridge::handleRequest(const json::Value& m) {
         }
         p->syncInventory();
         return missing;
+    }
+    // ---- eigene CreeMC-API ----
+    if (op == "tick") return json::Value(s.tick());
+    if (op == "gamerule") {
+        std::string v = s.gameRules().get(m["rule"].str());
+        return v.empty() ? json::Value() : json::Value(v);
+    }
+    if (op == "set_gamerule") {
+        if (!s.gameRules().set(m["rule"].str(), m["value"].str())) return false;
+        for (Player* p : s.players()) p->sendRuleFlags();
+        s.sendTime();
+        return true;
+    }
+    if (op == "gamerules") {
+        json::Object o;
+        for (const auto& [n, v] : s.gameRules().all()) o[n] = v;
+        return json::Value(std::move(o));
+    }
+    if (op == "spawn_mob") {
+        std::string type = toLower(removePrefix(m["type"].str(), "minecraft:"));
+        if (!vanilla::isMobType(type)) return -1;
+        size_t before = s.entities().size();
+        vanilla::spawnMobs(s, type, m["x"].asDouble(), m["y"].asDouble(), m["z"].asDouble(), 1);
+        auto all = s.entities();
+        return all.size() > before ? json::Value(all.back()->entityId) : json::Value(-1);
+    }
+    if (op == "mob_types") {
+        json::Array a;
+        for (const auto& t : vanilla::mobTypes()) a.push_back(t);
+        return json::Value(std::move(a));
+    }
+    if (op == "player_info") {
+        Player* p = s.playerByUuid(Uuid::parse(m["uuid"].str()));
+        if (!p) return json::Value();
+        json::Object o;
+        o["name"] = p->name;
+        o["x"] = p->x;
+        o["y"] = p->y;
+        o["z"] = p->z;
+        o["health"] = double(p->health);
+        o["food"] = p->food;
+        o["saturation"] = double(p->saturation);
+        o["level"] = p->level();
+        o["xp"] = p->xpTotal;
+        o["gamemode"] = p->gamemode;
+        o["dead"] = p->dead;
+        o["ping"] = p->ping;
+        o["version"] = p->version->name;
+        return json::Value(std::move(o));
     }
     if (op == "is_op") return s.isOp(m["name"].asString());
     if (op == "played_before") return fileExists(joinPath(joinPath(s.root(), "playerdata"), m["uuid"].asString() + ".json"));

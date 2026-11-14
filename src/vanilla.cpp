@@ -5,6 +5,7 @@
 #include <map>
 #include <set>
 
+#include "blocks.hpp"
 #include "buffer.hpp"
 #include "data.hpp"
 #include "entity.hpp"
@@ -556,7 +557,7 @@ void hostileAi(Mob& m) {
             m.lookAt(target->x, target->z);
             if (m.fuse >= 30) {
                 m.remove();
-                explode(s, m.x, m.y + 0.5, m.z, 3.0);
+                explode(s, m.x, m.y + 0.5, m.z, 3.0, s.gameRules().b("mobGriefing"));
             }
             return;
         }
@@ -595,7 +596,7 @@ void trySpawn(Server& s) {
     int ground = w.getBlock(x, y, z);
     if (w.getBlock(x, y + 1, z) != AIR() || w.getBlock(x, y + 2, z) != AIR() || !data::SOLID[size_t(ground)]) return;
     std::string kind;
-    if (night && cfg.hostileMobs && cfg.difficulty > 0 && hostile < cfg.maxHostile) {
+    if (night && cfg.hostileMobs && s.gameRules().b("spawnMonsters") && cfg.difficulty > 0 && hostile < cfg.maxHostile) {
         auto it = HOSTILE.begin();
         std::advance(it, randInt(0, int(HOSTILE.size()) - 1));
         kind = it->first;
@@ -743,20 +744,23 @@ void tickPlayers(Server& s) {
         }
 
         // Hunger und Regeneration
+        bool regen = s.gameRules().b("naturalRegeneration");
         if (!cfg.hunger) {
-            if (p->health < 20 && tick % 40 == 0) p->heal(1);
+            if (regen && p->health < 20 && tick % 40 == 0) p->heal(1);
             continue;
         }
         if (cfg.difficulty == 0) {
             if (tick % 20 == 0) {
-                p->heal(1);
+                if (regen) p->heal(1);
                 if (p->food < 20) p->setFood(p->food + 1);
             }
             continue;
         }
         int& timer = p->regenTimer;
         ++timer;
-        if (p->food >= 20 && p->saturation > 0 && p->health < 20) {
+        if (!regen && p->food > 0) {
+            timer = 0;
+        } else if (p->food >= 20 && p->saturation > 0 && p->health < 20) {
             if (timer >= 10) {
                 timer = 0;
                 float use = std::min(p->saturation, 6.0f);
@@ -848,6 +852,7 @@ void spawnMobs(Server& s, const std::string& kind, double x, double y, double z,
 }
 
 void primeTnt(Server& s, int x, int y, int z, int fuse) {
+    if (!s.gameRules().b("tntExplodes")) return;   // Spielregel: TNT bleibt ein Block
     s.setBlockState(x, y, z, AIR());
     spawnTnt(s, x + 0.5, y, z + 0.5, fuse);
     s.playSound("minecraft:entity.tnt.primed", x + 0.5, y + 0.5, z + 0.5, 1.0f, 1.0f, 4);
@@ -872,8 +877,9 @@ void explode(Server& s, double cx, double cy, double cz, double power, bool brea
                         continue;
                     }
                     std::string name = data::blockName(state);
+                    blocks::dropContents(s, x, y, z);
                     s.setBlockState(x, y, z, AIR());
-                    if (randDouble() < 1 / power)   // wie Vanilla: nur ein Teil droppt
+                    if (s.gameRules().b("doTileDrops") && randDouble() < 1 / power)   // wie Vanilla: nur ein Teil droppt
                         for (auto& [item, count] : blockDrops(name, "", true)) s.dropItem(x + 0.5, y + 0.5, z + 0.5, item, count);
                 }
     }
@@ -903,7 +909,7 @@ void explode(Server& s, double cx, double cy, double cz, double power, bool brea
 void tick(Server& s) {
     tickPlayers(s);
     int64_t t = s.tick();
-    if (t % 40 == 0 && (s.config().passiveMobs || s.config().hostileMobs)) trySpawn(s);
+    if (t % 40 == 0 && s.gameRules().b("doMobSpawning")) trySpawn(s);
     if (t % 200 == 0) despawnFar(s);
 }
 
@@ -915,12 +921,12 @@ void onMove(Player& p, double fromX, double fromY, double fromZ) {
 }
 
 void onLand(Player& p, double fall) {
-    if (p.server.config().fallDamage && fall > 3) p.damage(float(std::ceil(fall - 3)), "fall");
+    if (p.server.gameRules().b("fallDamage") && fall > 3) p.damage(float(std::ceil(fall - 3)), "fall");
 }
 
 void onBlockBreak(Player& p, int x, int y, int z, int state) {
     Server& s = p.server;
-    if (!s.config().blockDrops) return;
+    if (!s.gameRules().b("doTileDrops")) return;
     std::string block = data::blockName(state);
     std::string tool = p.heldItem();
     for (auto& [item, count] : blockDrops(block, tool)) s.dropItem(x + 0.5, y + 0.3, z + 0.5, item, count);
@@ -1006,7 +1012,7 @@ void onAttack(Player& p, int target) {
     if (smash) dmg += maceSmashBonus(fall, enchantLevel(item, "density"));
     int breach = mace ? enchantLevel(item, "breach") : 0;
     if (tp) {
-        if (!s.config().pvp) return;
+        if (!s.gameRules().b("pvp")) return;
         tp->breach = breach;
         bool hit = tp->damage(dmg, "attack", p.entityId);
         tp->breach = 0;
@@ -1054,6 +1060,7 @@ void onInteractEntity(Player& p, int target, int hand) {
 }
 
 void onMobDeath(Server& s, Mob& mob, int killer) {
+    if (!s.gameRules().b("doMobLoot")) return;
     Player* kp = s.playerById(killer);
     int looting = kp ? enchantLevel(kp->heldItem(), "looting") : 0;
     auto it = DROPS.find(mob.type);
@@ -1090,6 +1097,38 @@ void init(Server& server) {
                   s.sendMessage(sec("a") + t->name + " wurde geheilt.");
               },
               nullptr});
+    cmds.add({"gamerule", "Zeigt oder ändert eine Spielregel", "/gamerule [regel] [wert]", {}, true,
+              [&server](CommandSender& s, const std::vector<std::string>& a) {
+                  GameRules& rules = server.gameRules();
+                  if (a.empty()) {
+                      std::string line;
+                      for (const auto& [n, v] : rules.all()) line += (line.empty() ? "" : sec("7") + ", ") + sec("e") + n + sec("7") + "=" + sec("f") + v;
+                      s.sendMessage(sec("6") + "Spielregeln: " + line);
+                      return;
+                  }
+                  const GameRules::Def* d = rules.find(a[0]);
+                  if (!d) throw CommandError("Unbekannte Spielregel: " + a[0]);
+                  if (a.size() == 1) {
+                      s.sendMessage(sec("e") + d->name + sec("7") + " = " + sec("f") + rules.get(d->name) + sec("8") + "  (" + d->description + ")");
+                      return;
+                  }
+                  if (!rules.set(d->name, a[1]))
+                      throw CommandError(d->isBool ? "Wert muss true oder false sein" : "Wert muss eine ganze Zahl sein");
+                  for (Player* p : server.players()) p->sendRuleFlags();
+                  if (d->name == "doDaylightCycle") server.sendTime();
+                  s.sendMessage(sec("a") + "Spielregel " + d->name + " ist jetzt " + rules.get(d->name));
+              },
+              [&server](CommandSender&, const std::vector<std::string>& a) {
+                  std::vector<std::string> out;
+                  if (a.size() <= 1) {
+                      for (const auto& d : server.gameRules().defs()) out.push_back(d.name);
+                  } else if (a.size() == 2) {
+                      const GameRules::Def* d = server.gameRules().find(a[0]);
+                      if (d && d->isBool) out = {"true", "false"};
+                      else if (d) out = {std::to_string(d->def)};
+                  }
+                  return out;
+              }});
     cmds.add({"clear", "Leert das Inventar", "/clear [spieler] [item]", {}, true,
               [target](CommandSender& s, const std::vector<std::string>& a) {
                   Player* t = target(s, a, 0);

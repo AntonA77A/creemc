@@ -65,6 +65,7 @@ Server::Server(std::string root) : root_(std::move(root)), commands_(*this) {
     g_server = this;
     config_ = Config::load(joinPath(root_, "config.toml"));
     world_ = std::make_unique<World>(config_.worldName, joinPath(root_, config_.worldName), config_.generator, config_.seed);
+    gameRules_.load(joinPath(root_, config_.worldName), config_);
     loadOps();
     std::string icon;
     if (readFile(joinPath(root_, "server-icon.png"), icon)) favicon = "data:image/png;base64," + base64(icon);
@@ -367,7 +368,7 @@ const Bytes& Server::chunkFrame(int cx, int cz, const Version& v) {
 // ---- Zeit, Befehle ----------------------------------------------------------
 
 void Server::sendTime(Player* p) {
-    auto payload = [this](const Version& v) { return v.updateTime(world_->age, world_->time, config_.daylightCycle); };
+    auto payload = [this](const Version& v) { return v.updateTime(world_->age, world_->time, gameRules_.b("doDaylightCycle")); };
     if (p) p->send("update_time", payload(*p->version));
     else broadcastPacketV("update_time", payload);
 }
@@ -486,7 +487,7 @@ void Server::doTick() {
     }
     World& w = *world_;
     w.age++;
-    if (config_.daylightCycle) w.time++;
+    if (gameRules_.b("doDaylightCycle")) w.time++;
     if (tick_ % 20 == 0) sendTime();
     if (tick_ % 200 == 0)
         for (Player* p : players()) p->tickKeepAlive();

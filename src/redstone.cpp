@@ -496,7 +496,8 @@ void destroy(const Pos& p) {
     blocks::dropContents(*S, p.x, p.y, p.z);
     set(p, 0);
     if (n == "minecraft:water" || n == "minecraft:lava") return;
-    for (auto& [item, c] : vanilla::blockDrops(n, "", true)) S->dropItem(p.x + .5, p.y + .3, p.z + .5, item, c);
+    if (S->gameRules().b("doTileDrops"))
+        for (auto& [item, c] : vanilla::blockDrops(n, "", true)) S->dropItem(p.x + .5, p.y + .3, p.z + .5, item, c);
 }
 
 void pistonUpdate(const Pos& p, int st);

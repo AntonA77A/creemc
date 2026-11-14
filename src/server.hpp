@@ -17,6 +17,7 @@
 #include "config.hpp"
 #include "connection.hpp"
 #include "entity.hpp"
+#include "gamerules.hpp"
 #include "recipes.hpp"
 #include "world.hpp"
 
@@ -30,6 +31,7 @@ public:
 
     // Zugriff
     Config& config() { return config_; }
+    GameRules& gameRules() { return gameRules_; }
     World& world() { return *world_; }
     Commands& commands() { return commands_; }
     RecipeBook& recipes() { return recipes_; }
@@ -105,6 +107,7 @@ private:
 
     std::string root_;
     Config config_;
+    GameRules gameRules_;
     std::unique_ptr<World> world_;
     std::unique_ptr<auth::KeyPair> keys_;
     Commands commands_;

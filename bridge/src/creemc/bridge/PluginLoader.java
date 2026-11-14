@@ -62,10 +62,11 @@ final class PluginLoader {
                 boolean paper = false;
                 if (entry == null) {
                     entry = jf.getJarEntry("paper-plugin.yml");
-                    paper = true;
+                    paper = entry != null;
                 }
+                if (entry == null) entry = jf.getJarEntry("creemc.yml");   // eigenes CreeMC-Plugin
                 if (entry == null) {
-                    LOG.warning(jar.getName() + ": keine plugin.yml - kein Bukkit/Paper-Plugin, übersprungen");
+                    LOG.warning(jar.getName() + ": keine plugin.yml/creemc.yml - kein Plugin,übersprungen");
                     continue;
                 }
                 String yml;

@@ -258,6 +258,7 @@ void Player::join() {
     send("update_health", hp.out);
     sendExperience();
     syncInventory();
+    sendRuleFlags();
     teleport(x, y, z, yaw, pitch);   // startet auch das Chunk-Laden
 }
 
@@ -381,6 +382,10 @@ std::string deathMessage(Server& server, const Player& p, const std::string& cau
 
 bool Player::damage(float amount, const std::string& cause, int attacker) {
     if (dead || !isSurvival() || amount <= 0) return false;
+    const GameRules& rules = server.gameRules();
+    if ((cause == "fall" && !rules.b("fallDamage")) || ((cause == "fire" || cause == "lava") && !rules.b("fireDamage")) ||
+        (cause == "drown" && !rules.b("drowningDamage")))
+        return false;
     // Vanilla: während der kurzen Unverwundbarkeit zählt nur, was über den letzten Treffer hinausgeht
     if (invulnerableTicks > 0 && amount <= lastDamage) return false;
     amount = vanilla::reduceDamage(*this, amount, cause, breach);
@@ -426,7 +431,7 @@ void Player::die(const std::string& rawMessage) {
     usingItem.reset();
     closeWindow();
     std::string message = rawMessage;
-    bool keep = server.config().keepInventory;
+    bool keep = server.gameRules().b("keepInventory");
     if (server.bridge().listens("player_death")) {
         json::Object d;
         d["player"] = server.bridge().snap(this);
@@ -454,7 +459,14 @@ void Player::die(const std::string& rawMessage) {
     Writer st;
     st.i32(entityId).i8(3);
     server.broadcastPacket("entity_status", st.out, this);
-    if (!message.empty()) server.broadcast(sec("7") + message);
+    if (!message.empty() && server.gameRules().b("showDeathMessages")) server.broadcast(sec("7") + message);
+    if (server.gameRules().b("doImmediateRespawn")) {
+        Server* s = &server;
+        Uuid id = uuid;
+        s->runLater(1, [s, id] {   // über die UUID suchen: der Spieler könnte inzwischen weg sein
+            if (Player* p = s->playerByUuid(id)) p->respawn();
+        });
+    }
 }
 
 void Player::respawn() {
@@ -479,6 +491,7 @@ void Player::respawn() {
     send("game_event", ev.out);
     sendAbilities();
     sendPermissionLevel();   // der Client vergisst sie beim Respawn
+    sendRuleFlags();
     sendHealth();
     sendExperience();
     loadedChunks.clear();
@@ -557,6 +570,20 @@ void Player::sendExperience() {
     Writer w;
     w.f32(progress).varint(level).varint(xpTotal);
     send("set_experience", w.out);
+}
+
+void Player::sendRuleFlags() {
+    // Spielregeln, die der Client selbst kennen muss
+    const GameRules& rules = server.gameRules();
+    Writer ev;
+    ev.u8(11).f32(rules.b("doImmediateRespawn") ? 1.0f : 0.0f);   // Todesbildschirm an/aus
+    send("game_event", ev.out);
+    Writer lc;
+    lc.u8(12).f32(rules.b("doLimitedCrafting") ? 1.0f : 0.0f);
+    send("game_event", lc.out);
+    Writer dbg;
+    dbg.i32(entityId).i8(rules.b("reducedDebugInfo") ? 22 : 23);   // weniger F3-Infos
+    send("entity_status", dbg.out);
 }
 
 void Player::sendPermissionLevel() {

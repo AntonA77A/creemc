@@ -24,9 +24,9 @@ if (-not $exists) {
 
 # 2) Release mit Quellcode-Paket, Egg und Exe (das Egg lädt immer das neueste Release)
 Copy-Item build\Release\creemc.exe dist\creemc.exe -Force
-& $gh release create $tag "dist\creemc-source.tar.gz" "dist\egg-creemc.json" "dist\creemc.exe" `
+& $gh release create $tag "dist\creemc-source.tar.gz" "dist\egg-creemc.json" "dist\creemc.exe" "dist\creemc-api.jar" "dist\creemc-api-sources.jar" `
     --repo AntonA77A/creemc --title "CreeMC $Version" `
-    --notes "Vanilla-Gameplay: Ueberleben (Leben, Hunger, Schaden, Tod), Mobs, Kampf mit Ruestung und Verzauberungen, Block-Drops, TNT, Kisten, Oefen, Trichter, Wasser/Lava, fallender Sand, Pflanzen, Redstone mit Kolben, Zaubertisch und Amboss. Egg: egg-creemc.json im Panel importieren. Windows: creemc.exe."
+    --notes "Vanilla-Gameplay: Ueberleben (Leben, Hunger, Schaden, Tod), Mobs, Kampf mit Ruestung und Verzauberungen, Block-Drops, TNT, Kisten, Oefen, Trichter, Wasser/Lava, fallender Sand, Pflanzen, Redstone mit Kolben, Zaubertisch und Amboss, Spielregeln (/gamerule), eigene Plugin-API (creemc-api.jar, siehe PLUGIN-API.md). Egg: egg-creemc.json im Panel importieren. Windows: creemc.exe."
 if ($LASTEXITCODE -ne 0) { throw "Release konnte nicht erstellt werden" }
 
 Write-Host ""

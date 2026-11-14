@@ -93,7 +93,8 @@ public:
                 server.setBlockState(bx, by, bz, state);
                 if (n.find("anvil") != std::string::npos) server.playSound("minecraft:block.anvil.land", x, y, z, 0.3f, 1.0f, 4);
             } else {   // landet auf Fackel/Platte o.Ã¤. -> als Item
-                for (auto& [item, c] : vanilla::blockDrops(n, "", true)) server.dropItem(x, y, z, item, c);
+                if (server.gameRules().b("doTileDrops"))
+                    for (auto& [item, c] : vanilla::blockDrops(n, "", true)) server.dropItem(x, y, z, item, c);
             }
         }
     }
@@ -163,7 +164,7 @@ std::optional<int> newLevel(Server& s, int x, int y, int z, bool water) {
             best = std::max(best, amount(f->level));
         }
     }
-    if (water && sources >= 2) {   // unendliche Quelle
+    if (sources >= 2 && s.gameRules().b(water ? "waterSourceConversion" : "lavaSourceConversion")) {   // unendliche Quelle
         int below = w.getBlock(x, y - 1, z);
         auto bf = fluid(below);
         if ((data::SOLID[size_t(below)] && !replaceable(below)) || (bf && bf->water && bf->level == 0)) return 0;
@@ -200,7 +201,8 @@ void flowInto(Server& s, int x, int y, int z, bool water, int level, bool down =
     if (st != 0 && !f) {
         std::string n = data::blockName(st);
         if (n != "minecraft:cave_air" && n != "minecraft:void_air")   // Pflanzen, Fackeln ... werden weggespÃ¼lt
-            for (auto& [item, c] : vanilla::blockDrops(n, "", true)) s.dropItem(x + .5, y + .3, z + .5, item, c);
+            if (s.gameRules().b("doTileDrops"))
+                for (auto& [item, c] : vanilla::blockDrops(n, "", true)) s.dropItem(x + .5, y + .3, z + .5, item, c);
     }
     s.setBlockState(x, y, z, make(water, level));
 }
@@ -501,7 +503,7 @@ void init(Server& server) {
 void tick(Server& s) {
     loadGrowing(s);
     // Wie Vanillas zufÃ¤llige Ticks (3 pro 4096 BlÃ¶cke und Tick), nur fÃ¼r bekannte Pflanzen
-    const double chance = 3.0 / 4096.0;
+    const double chance = s.gameRules().i("randomTickSpeed") / 4096.0;   // Vanilla: randomTickSpeed (3) pro 4096 Blöcke
     std::vector<BlockPos> list(g.growing.begin(), g.growing.end());
     for (const auto& p : list)
         if (randDouble() < chance) grow(s, p.x, p.y, p.z, false);

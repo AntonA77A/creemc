@@ -43,7 +43,8 @@ quit_message = "&e{name} hat den Server verlassen"
 # false = auch Spieler ohne gekauftes Minecraft dürfen rein (Offline-Modus).
 online_mode = true
 
-# Spielregeln
+# Spielregeln. pvp, fall_damage, block_drops, keep_inventory, daylight_cycle und die Mob-Schalter sind
+# Startwerte für neue Welten - danach im Spiel mit /gamerule ändern (gespeichert in <welt>/gamerules.json).
 pvp = true
 hunger = true
 fall_damage = true
