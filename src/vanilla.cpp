@@ -10,6 +10,7 @@
 #include "buffer.hpp"
 #include "data.hpp"
 #include "entity.hpp"
+#include "mobs.hpp"
 #include "physics.hpp"
 #include "player.hpp"
 #include "server.hpp"
@@ -75,6 +76,9 @@ struct Ctx {
     std::string block, tool;
     std::map<std::string, int> ench;
     std::map<std::string, std::string> props;
+    bool killedByPlayer = false, onFire = false;   // Mob-Loot
+    Server* server = nullptr;                      // für furnace_smelt
+    int depth = 0;                                 // verschachtelte Tabellen
     int level(const std::string& e) const {
         auto it = ench.find(ns(e));
         return it == ench.end() ? 0 : it->second;
@@ -201,6 +205,13 @@ bool cond(const json::Value& c, const Ctx& ctx) {
         return true;
     }
     if (t == "reference") return cond(c["name"], ctx);
+    if (t == "killed_by_player") return ctx.killedByPlayer;
+    if (t == "entity_properties") {   // nur "brennt" wird unterstützt
+        const json::Value& flags = c["predicate"]["flags"];
+        if (flags.isObject() && flags["is_on_fire"].isBool()) return flags["is_on_fire"].asBool() == ctx.onFire;
+        return true;
+    }
+    if (t == "damage_source_properties") return false;   // z.B. Schallplatten (Creeper von Skelett getötet)
     return false;
 }
 
@@ -226,7 +237,14 @@ double apply(const std::vector<const json::Value*>& funcs, double count, const C
         const json::Value& f = *fp;
         if (!condsOk(f, ctx)) continue;
         std::string t = removePrefix(f["function"].isString() ? f["function"].asString() : f["type"].str(), "minecraft:");
-        if (t == "set_count") {
+        if (t == "enchanted_count_increase" || t == "looting_enchant") {   // Plünderung
+            int lvl = ctx.level(f["enchantment"].str("minecraft:looting"));
+            if (lvl > 0) {
+                double per = number(f["count"].isNull() ? json::Value(1) : f["count"]);
+                count += std::floor(per * randDouble(0, lvl + 0.999));
+                if (f["limit"].isNumber() && f["limit"].asInt() > 0) count = std::min(count, double(f["limit"].asInt()));
+            }
+        } else if (t == "set_count") {
             double n = number(f["count"]);
             count = f["add"].asBool() ? count + n : n;
         } else if (t == "limit_count") {
@@ -262,7 +280,7 @@ bool expand(const json::Value& entry, const Ctx& ctx, std::vector<const json::Va
     std::string t = removePrefix(entry["type"].str(), "minecraft:");
     const json::Array empty;
     const json::Array& children = entry["children"].isArray() ? entry["children"].asArray() : empty;
-    if (t == "item") {
+    if (t == "item" || t == "loot_table") {   // loot_table: verschachtelte Tabelle (z.B. Schafwolle je Farbe)
         out.push_back(&entry);
         return true;
     }
@@ -303,10 +321,33 @@ std::vector<std::pair<std::string, int>> roll(const json::Value& table, const Ct
                 }
             if (choices.empty()) continue;
             for (const json::Value* ie : choices[size_t(randInt(0, int(choices.size()) - 1))]) {
+                if (removePrefix((*ie)["type"].str(), "minecraft:") == "loot_table") {
+                    const json::Value& v = (*ie)["value"].isNull() ? (*ie)["name"] : (*ie)["value"];
+                    if (ctx.depth > 4) continue;
+                    Ctx sub = ctx;
+                    sub.depth++;
+                    std::vector<std::pair<std::string, int>> more;
+                    if (v.isString()) {   // "minecraft:entities/sheep/white"
+                        std::string key = removePrefix(v.asString(), "minecraft:");
+                        const json::Value& nested = startsWith(key, "entities/")
+                            ? data::game()["entity_loot"]["minecraft:" + key.substr(9)]
+                            : data::game()["loot"]["minecraft:" + removePrefix(key, "blocks/")];
+                        if (!nested.isNull()) more = roll(nested, sub);
+                    } else if (v.isObject()) {
+                        more = roll(v, sub);
+                    }
+                    drops.insert(drops.end(), more.begin(), more.end());
+                    continue;
+                }
                 double count = apply(functions(*ie), 1, ctx);
                 count = apply(functions(pool), count, ctx);
                 int n = int(std::floor(count));
-                if (n > 0) drops.emplace_back(ns((*ie)["name"].str()), n);
+                std::string item = ns((*ie)["name"].str());
+                for (const json::Value* fn : functions(*ie))   // gebraten, wenn der Mob brannte
+                    if (removePrefix((*fn)["function"].isString() ? (*fn)["function"].asString() : (*fn)["type"].str(), "minecraft:") == "furnace_smelt" &&
+                        condsOk(*fn, ctx) && ctx.server)
+                        if (const auto* c = ctx.server->recipes().cook("smelting", item)) item = c->result;
+                if (n > 0) drops.emplace_back(item, n);
             }
         }
     }
@@ -337,6 +378,19 @@ std::vector<std::pair<std::string, int>> blockDrops(const std::string& block, co
     int state = data::blockState(block);
     (void)state;
     return roll(table, ctx);
+}
+
+std::vector<std::pair<std::string, int>> entityDrops(Server& s, const std::string& table, const std::string& weapon, bool killedByPlayer,
+                                                     bool onFire) {
+    const json::Value& t = data::game()["entity_loot"][ns(table)];
+    if (t.isNull()) return {};
+    Ctx ctx;
+    ctx.tool = weapon.empty() ? "" : data::baseItem(weapon);
+    ctx.ench = enchantments(weapon);
+    ctx.killedByPlayer = killedByPlayer;
+    ctx.onFire = onFire;
+    ctx.server = &s;
+    return roll(t, ctx);
 }
 
 int blockXp(const std::string& block, const std::string& tool) {
@@ -460,169 +514,7 @@ float reduceDamage(Player& p, float amount, const std::string& cause, int breach
     return amount;
 }
 
-// ==== Mobs ===================================================================
-
 namespace {
-
-const std::map<std::string, float> PASSIVE = {{"pig", 10}, {"cow", 10}, {"sheep", 8}, {"chicken", 4}};
-const std::map<std::string, float> HOSTILE = {{"zombie", 20}, {"spider", 16}, {"creeper", 20}};
-struct Drop {
-    const char* item;
-    int lo, hi;
-};
-const std::map<std::string, std::vector<Drop>> DROPS = {
-    {"pig", {{"porkchop", 1, 3}}},
-    {"cow", {{"beef", 1, 3}, {"leather", 0, 2}}},
-    {"sheep", {{"white_wool", 1, 1}, {"mutton", 1, 2}}},
-    {"chicken", {{"chicken", 1, 1}, {"feather", 0, 2}}},
-    {"zombie", {{"rotten_flesh", 0, 2}}},
-    {"spider", {{"string", 0, 2}}},
-    {"creeper", {{"gunpowder", 0, 2}}},
-};
-const std::map<std::string, std::pair<int, int>> MOB_XP = {
-    {"pig", {1, 3}}, {"cow", {1, 3}}, {"sheep", {1, 3}}, {"chicken", {1, 3}},
-    {"zombie", {5, 5}}, {"spider", {5, 5}}, {"creeper", {5, 5}},
-};
-const std::map<std::string, std::string> COOKED = {
-    {"porkchop", "cooked_porkchop"}, {"beef", "cooked_beef"}, {"mutton", "cooked_mutton"}, {"chicken", "cooked_chicken"},
-};
-
-void wander(Mob& m, double speed = 0.08) {
-    if (m.inWater) m.jump();
-    if (m.hasWander && m.age < m.wanderUntil) {
-        m.walkTowards(m.wanderX, m.wanderZ, speed);
-        if (std::hypot(m.wanderX - m.x, m.wanderZ - m.z) < 0.5) m.hasWander = false;
-    } else if (randDouble() < 0.02) {
-        m.hasWander = true;
-        m.wanderX = m.x + randDouble(-8, 8);
-        m.wanderZ = m.z + randDouble(-8, 8);
-        m.wanderUntil = m.age + randInt(60, 160);
-    } else {
-        m.vx *= 0.5;
-        m.vz *= 0.5;
-    }
-}
-
-void passiveAi(Mob& m) {
-    double ax, ay, az;
-    if (m.lastAttacker && m.panic > 0 && m.server.entityPosition(m.lastAttacker, ax, ay, az)) {
-        --m.panic;
-        double dx = m.x - ax, dz = m.z - az;
-        double d = std::hypot(dx, dz);
-        if (d < 1e-6) d = 1;
-        m.walkTowards(m.x + dx / d * 4, m.z + dz / d * 4, 0.16);
-        return;
-    }
-    if (m.hurtCooldown == 9) m.panic = 60;   // gerade getroffen -> wegrennen
-    wander(m);
-}
-
-Player* nearestTarget(Mob& m, double radius, double& dist) {
-    Player* best = nullptr;
-    dist = radius;
-    for (Player* p : m.server.players()) {
-        if (p->dead || !p->isSurvival()) continue;
-        double d = m.distanceTo(p->x, p->y, p->z);
-        if (d < dist) {
-            best = p;
-            dist = d;
-        }
-    }
-    return best;
-}
-
-void hostileAi(Mob& m) {
-    Server& s = m.server;
-    bool night = isNight(s);
-    if (m.attackCooldown > 0) --m.attackCooldown;
-    // Zombies brennen bei Tag unter freiem Himmel
-    if (m.type == "zombie" && !night && !m.inWater && s.world().highestBlock(fl(m.x), fl(m.z)) < m.y)
-        m.fireTicks = std::max(m.fireTicks, 60);
-    // Spinnen sind tagsüber friedlich, außer man greift sie an
-    if (m.type == "spider" && !night && !m.lastAttacker) {
-        wander(m);
-        return;
-    }
-    double dist;
-    Player* target = nearestTarget(m, 16, dist);
-    if (!target) {
-        m.fuse = 0;
-        wander(m);
-        return;
-    }
-    if (m.type == "creeper") {
-        if (dist < 3 || (m.fuse > 0 && dist < 7)) {
-            if (m.fuse == 0) s.playSound("minecraft:entity.creeper.primed", m.x, m.y, m.z, 1.0f, 0.5f, 5);
-            ++m.fuse;
-            m.vx = m.vz = 0;
-            m.lookAt(target->x, target->z);
-            if (m.fuse >= 30) {
-                m.remove();
-                json::Object ed;
-                ed["entity"] = api::entitySnap(&m);
-                if (!api::fire(s, "entity_explode", nullptr, std::move(ed)))
-                    explode(s, m.x, m.y + 0.5, m.z, 3.0, s.gameRules().b("mobGriefing"));
-            }
-            return;
-        }
-        m.fuse = 0;
-    }
-    double speed = m.type == "zombie" ? 0.11 : m.type == "spider" ? 0.15 : 0.1;
-    m.walkTowards(target->x, target->z, speed);
-    if (m.type == "spider" && m.horizontalCollision) m.vy = 0.2;   // Spinnen klettern
-    double horizontal = std::hypot(target->x - m.x, target->z - m.z);
-    if (m.type != "creeper" && horizontal < 1.6 && std::abs(target->y - m.y) < 2 && m.attackCooldown == 0) {
-        m.attackCooldown = 20;
-        float dmg = (m.type == "zombie" ? 3.0f : 2.0f) * (0.5f + 0.5f * float(s.config().difficulty));
-        target->damage(dmg, "attack", m.entityId);
-    }
-}
-
-void trySpawn(Server& s) {
-    const Config& cfg = s.config();
-    std::vector<Player*> players;
-    for (Player* p : s.players())
-        if (!p->dead && p->gamemode != 3) players.push_back(p);
-    if (players.empty()) return;
-    int passive = 0, hostile = 0;
-    for (Entity* e : s.entities()) {
-        if (!e->isMob()) continue;
-        if (PASSIVE.count(e->type)) ++passive;
-        if (HOSTILE.count(e->type)) ++hostile;
-    }
-    bool night = isNight(s);
-    Player* p = players[size_t(randInt(0, int(players.size()) - 1))];
-    double angle = randDouble(0, 2 * PI), dist = randDouble(24, 44);
-    int x = fl(p->x + std::cos(angle) * dist), z = fl(p->z + std::sin(angle) * dist);
-    if (!p->hasChunk(x >> 4, z >> 4)) return;
-    World& w = s.world();
-    int y = w.highestBlock(x, z);
-    int ground = w.getBlock(x, y, z);
-    if (w.getBlock(x, y + 1, z) != AIR() || w.getBlock(x, y + 2, z) != AIR() || !data::SOLID[size_t(ground)]) return;
-    std::string kind;
-    if (night && cfg.hostileMobs && s.gameRules().b("spawnMonsters") && cfg.difficulty > 0 && hostile < cfg.maxHostile) {
-        auto it = HOSTILE.begin();
-        std::advance(it, randInt(0, int(HOSTILE.size()) - 1));
-        kind = it->first;
-    } else if (ground == GRASS() && passive < cfg.maxPassive && cfg.passiveMobs) {
-        auto it = PASSIVE.begin();
-        std::advance(it, randInt(0, int(PASSIVE.size()) - 1));
-        kind = it->first;
-    } else {
-        return;
-    }
-    spawnMobs(s, kind, x + 0.5, y + 1.0, z + 0.5, PASSIVE.count(kind) ? randInt(1, 3) : 1);
-}
-
-void despawnFar(Server& s) {
-    auto players = s.players();
-    for (Entity* e : s.entities()) {
-        if (!e->isMob()) continue;
-        double best = 1e18;
-        for (Player* p : players) best = std::min(best, e->distanceTo(p->x, p->y, p->z));
-        if (best > 96) e->remove();
-    }
-}
 
 // ==== TNT ====================================================================
 
@@ -752,7 +644,8 @@ void tickPlayers(Server& s) {
                     if (p->gamemode == 0) p->setHeldItem("minecraft:bucket");
                     p->finishUsingItem();
                 }
-            } else if (!food.isArray()) {
+            } else if (!food.isArray() && base != "minecraft:bow" && base != "minecraft:crossbow" && base != "minecraft:trident" &&
+                       base != "minecraft:shield" && base != "minecraft:spyglass") {
                 p->usingItem.reset();
             }
         }
@@ -847,32 +740,24 @@ void maceSmash(Player& p, Entity* targetEntity, Player* targetPlayer, const std:
 
 // ==== Öffentliche Funktionen =================================================
 
-bool isMobType(const std::string& t) { return PASSIVE.count(t) || HOSTILE.count(t); }
+bool isMobType(const std::string& t) { return mobs::isMob(t); }
 
-std::vector<std::string> mobTypes() {
-    std::vector<std::string> out;
-    for (auto& [k, v] : PASSIVE) out.push_back(k);
-    for (auto& [k, v] : HOSTILE) out.push_back(k);
-    return out;
-}
+std::vector<std::string> mobTypes() { return mobs::types(); }
 
 void spawnMobs(Server& s, const std::string& kind, double x, double y, double z, int count) {
     for (int i = 0; i < count; ++i) {
-        float hp = PASSIVE.count(kind) ? PASSIVE.at(kind) : HOSTILE.count(kind) ? HOSTILE.at(kind) : 10.0f;
-        double mx = x + randDouble(-1, 1), mz = z + randDouble(-1, 1);
+        double mx = x + (count > 1 ? randDouble(-1, 1) : 0), mz = z + (count > 1 ? randDouble(-1, 1) : 0);
         if (s.bridge().listens("creature_spawn")) {   // Plugins dürfen das Spawnen verhindern
-            json::Object cd;
-            cd["entity"] = json::Object{};
-            cd["entity"].asObject()["id"] = -1;
-            cd["entity"].asObject()["type"] = kind;
-            cd["entity"].asObject()["x"] = mx;
-            cd["entity"].asObject()["y"] = y;
-            cd["entity"].asObject()["z"] = mz;
+            json::Object cd, ent;
+            ent["id"] = -1;
+            ent["type"] = kind;
+            ent["x"] = mx;
+            ent["y"] = y;
+            ent["z"] = mz;
+            cd["entity"] = json::Value(std::move(ent));
             if (api::fire(s, "creature_spawn", nullptr, std::move(cd))) continue;
         }
-        Mob* m = s.spawnMob(kind, mx, y, mz, hp);
-        if (HOSTILE.count(kind)) m->ai = hostileAi;
-        else m->ai = passiveAi;
+        mobs::spawn(s, kind, mx, y, mz);
     }
 }
 
@@ -933,9 +818,7 @@ void explode(Server& s, double cx, double cy, double cz, double power, bool brea
 
 void tick(Server& s) {
     tickPlayers(s);
-    int64_t t = s.tick();
-    if (t % 40 == 0 && s.gameRules().b("doMobSpawning")) trySpawn(s);
-    if (t % 200 == 0) despawnFar(s);
+    mobs::tick(s);
 }
 
 void onMove(Player& p, double fromX, double fromY, double fromZ) {
@@ -1084,41 +967,7 @@ void onInteractEntity(Player& p, int target, int hand) {
     }
 }
 
-void onMobDeath(Server& s, Mob& mob, int killer) {
-    bool loot = s.gameRules().b("doMobLoot");
-    Player* kp = s.playerById(killer);
-    int looting = kp ? enchantLevel(kp->heldItem(), "looting") : 0;
-    std::vector<std::pair<std::string, int>> drops;
-    auto it = DROPS.find(mob.type);
-    if (loot && it != DROPS.end()) {
-        for (const auto& d : it->second) {
-            int n = randInt(d.lo, d.hi) + (looting ? randInt(0, looting) : 0);
-            if (n <= 0) continue;
-            std::string item = d.item;
-            auto c = COOKED.find(item);
-            if (mob.fireTicks > 0 && c != COOKED.end()) item = c->second;
-            drops.emplace_back(ns(item), n);
-        }
-    }
-    if (s.bridge().listens("entity_death")) {   // Plugins dürfen die Drops ändern
-        json::Object d;
-        d["entity"] = api::entitySnap(&mob);
-        json::Array da;
-        for (const auto& [item, n] : drops) da.push_back(json::Array{item, n});
-        d["drops"] = json::Value(std::move(da));
-        if (kp) d["killer"] = s.bridge().snap(kp);
-        json::Value r = s.bridge().event("entity_death", std::move(d));
-        if (r["drops"].isArray()) {
-            drops.clear();
-            for (const auto& v : r["drops"].asArray())
-                if (v.isArray() && v.size() >= 2 && v[0].isString()) drops.emplace_back(v[0].asString(), int(v[1].asInt(1)));
-        }
-    }
-    for (const auto& [item, n] : drops) s.dropItem(mob.x, mob.y + 0.5, mob.z, item, n);
-    if (!loot) return;
-    auto xp = MOB_XP.find(mob.type);
-    if (kp && xp != MOB_XP.end()) kp->giveXp(randInt(xp->second.first, xp->second.second));
-}
+void onMobDeath(Server& s, Mob& mob, int killer) { mobs::onDeath(s, mob, killer); }
 
 // ==== Befehle ================================================================
 
@@ -1185,8 +1034,25 @@ void init(Server& server) {
                   s.sendMessage(sec("a") + std::to_string(removed) + " Items von " + t->name + " entfernt.");
               },
               nullptr});
-    cmds.add({"kill", "Tötet dich oder einen Spieler", "/kill [spieler]", {}, true,
-              [target](CommandSender& s, const std::vector<std::string>& a) {
+    cmds.add({"kill", "Tötet dich, einen Spieler oder Entities", "/kill [spieler | @e | @e[type=zombie]]", {}, true,
+              [target, &server](CommandSender& s, const std::vector<std::string>& a) {
+                  if (!a.empty() && startsWith(a[0], "@e")) {   // alle Entities (außer Spieler), optional nur ein Typ
+                      std::string type;
+                      size_t eq = a[0].find("type=");
+                      if (eq != std::string::npos) {
+                          type = removePrefix(a[0].substr(eq + 5), "minecraft:");
+                          size_t end = type.find_first_of(",]");
+                          if (end != std::string::npos) type = type.substr(0, end);
+                      }
+                      int n = 0;
+                      for (Entity* e : server.entities()) {
+                          if (!type.empty() && e->type != type) continue;
+                          e->remove();
+                          ++n;
+                      }
+                      s.sendMessage(sec("a") + std::to_string(n) + " Entities entfernt.");
+                      return;
+                  }
                   Player* t = target(s, a, 0);
                   t->kill(t->name + " ist gestorben");
               },

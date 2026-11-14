@@ -38,6 +38,9 @@ int enchantLevel(const std::string& item, const std::string& enchantment);
 // Loot
 std::vector<std::pair<std::string, int>> blockDrops(const std::string& block, const std::string& tool, bool ignoreTool = false);
 int blockXp(const std::string& block, const std::string& tool);
+// Mob-Loot nach den Vanilla-Tabellen ("minecraft:zombie", "minecraft:sheep/white" ...)
+std::vector<std::pair<std::string, int>> entityDrops(Server& s, const std::string& table, const std::string& weapon, bool killedByPlayer,
+                                                     bool onFire);
 
 // Mobs, TNT, Explosionen
 bool isMobType(const std::string& type);

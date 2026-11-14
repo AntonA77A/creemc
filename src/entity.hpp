@@ -69,6 +69,11 @@ public:
     bool hasWander = false;
     double wanderX = 0, wanderZ = 0;
     int wanderUntil = 0, panic = 0, attackCooldown = 0, fuse = 0;
+    int angry = 0, shootCooldown = 0, dry = 0;   // gereizt (Ticks), Schuss-Pause, Ticks an Land (Fische)
+    double wanderY = 0;
+    bool flying = false, swimming = false;
+    std::string mainHand;                       // Waffe in der Hand (Bogen, Schwert ...)
+    std::vector<std::pair<std::string, Bytes>> spawnPackets(const Version& v) const override;
 
     bool isMob() const override { return true; }
     void tick() override;

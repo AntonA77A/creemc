@@ -12,6 +12,7 @@
 #include "connection.hpp"
 #include "data.hpp"
 #include "enchanting.hpp"
+#include "mobs.hpp"
 #include "physics.hpp"
 #include "placement.hpp"
 #include "server.hpp"
@@ -1111,7 +1112,8 @@ void Player::onDig(Reader& r) {
         }
         return;
     }
-    if (status == 5) {   // Benutzen losgelassen (z.B. Essen abgebrochen)
+    if (status == 5) {   // Benutzen losgelassen (Bogen schießen, Essen abbrechen)
+        mobs::releaseBow(*this);
         usingItem.reset();
         return;
     }

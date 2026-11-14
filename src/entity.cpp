@@ -5,6 +5,7 @@
 
 #include "buffer.hpp"
 #include "api.hpp"
+#include "mobs.hpp"
 #include "data.hpp"
 #include "player.hpp"
 #include "server.hpp"
@@ -236,6 +237,11 @@ void Mob::tick() {
     if (ai) ai(*this);
     if (removed) return;
     Entity::tick();
+    if (swimming && !inWater && type != "turtle" && type != "axolotl" && type != "frog") {   // Fische ersticken an Land
+        if (++dry > 300 && dry % 20 == 0) damage(2.0f, 0, "drown");
+    } else {
+        dry = 0;
+    }
     if (inLava) damage(4.0f, 0, "lava");
     else if (fireTicks > 0 && fireTicks % 20 == 0) damage(1.0f, 0, "fire");
 }
@@ -256,8 +262,22 @@ void Mob::jump() {
 
 void Mob::lookAt(double tx, double tz) { yaw = float(std::atan2(-(tx - x), tz - z) * 180.0 / 3.14159265358979); }
 
+std::vector<std::pair<std::string, Bytes>> Mob::spawnPackets(const Version& v) const {
+    auto out = Entity::spawnPackets(v);
+    if (!out.empty() && !mainHand.empty()) {
+        Writer w;
+        w.varint(entityId).u8(0).raw(v.slot(mainHand, 1));
+        out.emplace_back("entity_equipment", w.out);
+    }
+    return out;
+}
+
 bool Mob::damage(float amount, int attacker, const std::string& cause) {
     if (dead || amount <= 0 || (hurtCooldown > 0 && amount <= lastDamage)) return false;
+    if (cause == "fire" || cause == "lava") {   // Blaze, Ghast, Strider ... brennen nicht
+        const mobs::Info* mi = mobs::info(type);
+        if (mi && mi->fireImmune) return false;
+    }
     if (server.bridge().listens("entity_damage")) {   // Plugins: EntityDamage(ByEntity)Event
         json::Object d;
         d["entity"] = api::entitySnap(this);
