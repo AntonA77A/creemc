@@ -13,6 +13,7 @@
 #include "data.hpp"
 #include "enchanting.hpp"
 #include "mobs.hpp"
+#include "objects.hpp"
 #include "physics.hpp"
 #include "placement.hpp"
 #include "server.hpp"
@@ -459,6 +460,7 @@ void Player::kill(const std::string& message) {
 }
 
 void Player::die(const std::string& rawMessage) {
+    objects::dismount(*this);
     dead = true;
     usingItem.reset();
     closeWindow();
@@ -908,7 +910,32 @@ void Player::handlePacket(int pid, const Bytes& payload) {
             setSprinting(action == 1);
         }
     } else if (n == "c_player_input") {
-        if (version->protocol >= V1_21_6) setSneaking(r.u8() & 0x20);
+        bool fwd, back, left, right, shift;
+        if (version->protocol >= V1_21_2) {   // Tasten als Bits
+            int f = r.u8();
+            fwd = f & 0x01;
+            back = f & 0x02;
+            left = f & 0x04;
+            right = f & 0x08;
+            shift = f & 0x20;
+        } else {   // bis 1.21.1: Lenken eines Fahrzeugs
+            float side = r.f32(), forward = r.f32();
+            int f = r.u8();
+            fwd = forward > 0;
+            back = forward < 0;
+            left = side > 0;
+            right = side < 0;
+            shift = f & 0x02;
+        }
+        if (vehicle) {
+            if (shift) objects::dismount(*this);
+            else objects::input(*this, fwd, back, left, right);
+        }
+        if (version->protocol >= V1_21_6) setSneaking(shift);
+    } else if (n == "c_move_vehicle") {
+        double vx2 = r.f64(), vy2 = r.f64(), vz2 = r.f64();
+        float vyaw = r.f32(), vpitch = r.f32();
+        objects::vehicleMove(*this, vx2, vy2, vz2, vyaw, vpitch);
     } else if (n == "c_held_item") {
         int slot = r.i16();
         json::Object hd;
@@ -1014,6 +1041,7 @@ void Player::onCommand(const std::string& rawLine) {
 }
 
 void Player::setSneaking(bool s) {
+    if (s && vehicle) objects::dismount(*this);   // Schleichen = aussteigen
     if (s == sneaking) return;
     sneaking = s;
     server.broadcastPacketV("entity_metadata", [this](const Version& v) { return metadata(v); }, this);

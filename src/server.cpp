@@ -10,6 +10,7 @@
 #include "blocks.hpp"
 #include "buffer.hpp"
 #include "data.hpp"
+#include "objects.hpp"
 #include "physics.hpp"
 #include "placement.hpp"
 #include "redstone.hpp"
@@ -239,6 +240,7 @@ void Server::removePlayer(Player* player) {
     if (it == players_.end() || it->second.get() != player) return;
     std::unique_ptr<Player> owned = std::move(it->second);
     players_.erase(it);
+    objects::dismount(*owned);
     owned->closeWindow();
     owned->saveData();
     if (owned->conn) owned->conn->player = nullptr;
@@ -398,6 +400,7 @@ void Server::dispatchCommand(CommandSender& sender, const std::string& line) {
 
 void Server::save() {
     world_->save();
+    objects::saveAll(*this);
     for (Player* p : players()) p->saveData();
 }
 
@@ -517,6 +520,7 @@ int Server::run() {
     logx::info(std::to_string(n) + " Crafting-Rezepte geladen");
     vanilla::init(*this);
     redstone::init(*this);
+    objects::loadAll(*this);
     physics::init(*this);
     bridge_->start();   // Paper-/Bukkit-Plugins, falls .jar-Dateien in plugins/ liegen
 

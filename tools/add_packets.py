@@ -34,7 +34,12 @@ PACKETS = {
     "teams": ("c", "teams", "set_player_team"),
     "particle": ("c", "world_particles", "level_particles"),
     "update_attributes": ("c", "entity_update_attributes", "update_attributes"),
+    "set_passengers": ("c", "set_passengers", "set_passengers"),
+    "c_move_vehicle": ("s", "vehicle_move", "move_vehicle"),
+    "c_steer_boat": ("s", "steer_boat", "paddle_boat"),
+    "c_player_input": ("s", "steer_vehicle", "player_input"),   # bis 1.21.1 "steer_vehicle" (nur ergänzen, wenn es fehlt)
 }
+KEEP = {"c_player_input"}   # vorhandene Einträge nicht überschreiben
 COMPONENTS = ["lore", "unbreakable", "custom_model_data", "enchantment_glint_override", "max_stack_size", "tooltip_display"]
 
 _cache = {}
@@ -56,9 +61,15 @@ def main():
         if md_ver:
             paths = fetch(MCDATA + "dataPaths.json")["pc"][md_ver]
             pj = fetch(MCDATA + paths["protocol"] + "/protocol.json")
-            m = pj["play"]["toClient"]["types"]["packet"][1][0]["type"][1]["mappings"]
-            ids = {v: int(k, 16) for k, v in m.items()}
-            for logical, (_, md_name, _) in PACKETS.items():
+            ids_by_dir = {}
+            for dkey, dname in (("c", "toClient"), ("s", "toServer")):
+                m = pj["play"][dname]["types"]["packet"][1][0]["type"][1]["mappings"]
+                ids_by_dir[dkey] = {v: int(k, 16) for k, v in m.items()}
+            for logical, (direction, md_name, _) in PACKETS.items():
+                ids = ids_by_dir[direction]
+                if logical in KEEP and logical in d["packets"]:
+                    added.append(logical)
+                    continue
                 if md_name in ids:
                     d["packets"][logical] = ids[md_name]
                     added.append(logical)
@@ -66,10 +77,15 @@ def main():
         else:
             base = PUMPKIN.format(sha=sha)
             pk = fetch(base + "packets.json")
-            table = pk["clientbound"]["play"]
-            if isinstance(table, list):
-                table = {n: i for i, n in enumerate(table)}
-            for logical, (_, _, van) in PACKETS.items():
+            tables = {}
+            for dkey, dname in (("c", "clientbound"), ("s", "serverbound")):
+                tb = pk[dname]["play"]
+                tables[dkey] = {n: i for i, n in enumerate(tb)} if isinstance(tb, list) else tb
+            for logical, (direction, _, van) in PACKETS.items():
+                table = tables[direction]
+                if logical in KEEP and logical in d["packets"]:
+                    added.append(logical)
+                    continue
                 if van in table:
                     d["packets"][logical] = table[van]
                     added.append(logical)

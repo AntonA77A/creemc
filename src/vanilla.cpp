@@ -11,6 +11,8 @@
 #include "data.hpp"
 #include "entity.hpp"
 #include "mobs.hpp"
+#include "objects.hpp"
+#include "placement.hpp"
 #include "physics.hpp"
 #include "player.hpp"
 #include "server.hpp"
@@ -844,6 +846,7 @@ void onBlockBreak(Player& p, int x, int y, int z, int state) {
 
 void onUseItem(Player& p, int hand, const std::string& item) {
     if (hand != 0 || p.dead || p.gamemode == 3 || item.empty()) return;
+    if (objects::useItem(p, item)) return;
     physics::useBucket(p, item);
 }
 
@@ -864,6 +867,12 @@ bool useItemOnBlock(Player& p, int hand, const std::string& item, int cx, int cy
     Server& s = p.server;
     std::string base = data::baseItem(item);
     int slot = hand == 0 ? 36 + p.heldSlot : 45;
+    if (p.gamemode != 2 && hand == 0) {   // Rüstungsständer, Rahmen, Gemälde, Loren, Boote
+        int face = 1;
+        for (int f = 0; f < 6; ++f)
+            if (placement::FACE_OFFSETS[f][0] == tx - cx && placement::FACE_OFFSETS[f][1] == ty - cy && placement::FACE_OFFSETS[f][2] == tz - cz) face = f;
+        if (objects::useItemOnBlock(p, item, cx, cy, cz, face)) return true;
+    }
     if (base == "minecraft:flint_and_steel" || base == "minecraft:fire_charge") {
         if (p.gamemode == 2) return true;
         int clicked = s.world().getBlock(cx, cy, cz);
@@ -909,6 +918,10 @@ bool useItemOnBlock(Player& p, int hand, const std::string& item, int cx, int cy
 void onAttack(Player& p, int target) {
     Server& s = p.server;
     Player* tp = s.playerById(target);
+    if (Entity* obj = s.getEntity(target); objects::isObject(obj)) {
+        objects::attack(p, obj);
+        return;
+    }
     Mob* mob = dynamic_cast<Mob*>(s.getEntity(target));
     if (!tp && !mob) return;
     std::string item = p.heldItem();
@@ -951,8 +964,12 @@ void onAttack(Player& p, int target) {
 }
 
 void onInteractEntity(Player& p, int target, int hand) {
-    if (hand != 0) return;
     Entity* e = p.server.getEntity(target);
+    if (objects::isObject(e)) {
+        objects::interact(p, e, hand);
+        return;
+    }
+    if (hand != 0) return;
     if (e && e->type == "cow" && data::baseItem(p.heldItem()) == "minecraft:bucket") {
         auto it = p.inventory.find(36 + p.heldSlot);
         if (p.gamemode == 1) {
@@ -1103,6 +1120,10 @@ void init(Server& server) {
                   if (kind == "tnt") {
                       for (int i = 0; i < count; ++i) spawnTnt(server, p->x, p->y, p->z);
                       s.sendMessage(sec("a") + std::to_string(count) + "x TNT angezündet.");
+                      return;
+                  }
+                  if (objects::summon(server, kind, p->x, p->y, p->z, p->yaw)) {
+                      s.sendMessage(sec("a") + kind + " erzeugt.");
                       return;
                   }
                   if (!isMobType(kind)) {

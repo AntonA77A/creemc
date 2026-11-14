@@ -60,6 +60,7 @@ public:
     };
     std::optional<UsingItem> usingItem;   // gerade am Essen/Trinken
     bool allowFlight = false;             // Fliegen im Überleben erlaubt (Plugins)
+    int vehicle = 0;                      // Entity-ID des Boots/der Lore, in dem/der der Spieler sitzt
     float flySpeed = 0.05f, walkSpeed = 0.1f;
     std::set<Uuid> hiddenPlayers;         // diese Spieler sieht dieser Spieler nicht (hidePlayer)
     bool canSee(const Player* other) const { return !hiddenPlayers.count(other->uuid); }
