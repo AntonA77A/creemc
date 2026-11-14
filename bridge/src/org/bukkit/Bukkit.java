@@ -94,4 +94,35 @@ public final class Bukkit {
     public static void reload() { server.reload(); }
 
     public static void savePlayers() { server.savePlayers(); }
+
+    public static org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, int size) { return server.createInventory(owner, size); }
+
+    public static org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, int size, String title) {
+        return server.createInventory(owner, size, title);
+    }
+
+    public static org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, int size, net.kyori.adventure.text.Component title) {
+        return server.createInventory(owner, size, title);
+    }
+
+    public static org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, org.bukkit.event.inventory.InventoryType type) {
+        return server.createInventory(owner, type);
+    }
+
+    public static org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, org.bukkit.event.inventory.InventoryType type, String title) {
+        return server.createInventory(owner, type, title);
+    }
+
+    public static org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, org.bukkit.event.inventory.InventoryType type,
+                                                                 net.kyori.adventure.text.Component title) {
+        return server.createInventory(owner, type, title);
+    }
+
+    public static org.bukkit.boss.BossBar createBossBar(String title, org.bukkit.boss.BarColor color, org.bukkit.boss.BarStyle style, org.bukkit.boss.BarFlag... flags) {
+        return server.createBossBar(title, color, style, flags);
+    }
+
+    public static org.bukkit.scoreboard.ScoreboardManager getScoreboardManager() { return server.getScoreboardManager(); }
+
+    public static org.bukkit.inventory.ItemFactory getItemFactory() { return server.getItemFactory(); }
 }

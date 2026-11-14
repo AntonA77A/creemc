@@ -27,7 +27,7 @@ public final class CreeMC {
     private CreeMC() { }
 
     /** API-Version (steigt, wenn neue Funktionen dazukommen). */
-    public static final int API_VERSION = 1;
+    public static final int API_VERSION = 2;
 
     private static Bridge b() { return Bridge.get(); }
     private static String uuid(Player p) { return p.getUniqueId().toString(); }
@@ -189,4 +189,58 @@ public final class CreeMC {
 
     /** Item mit Verzauberungen und Namen bauen: CreeMC.item("diamond_sword").enchant("sharpness", 5).name("&amp;bKlinge"). */
     public static ItemBuilder item(String item) { return new ItemBuilder(item); }
+
+    /** ItemBuilder als Bukkit-ItemStack (für Inventare, GUIs). */
+    public static org.bukkit.inventory.ItemStack stack(ItemBuilder item, int count) {
+        return org.bukkit.inventory.ItemStack.fromCree(item.build(), count);
+    }
+
+    // ---- GUIs, Seitenleiste, Bossbar, Partikel ---------------------------------
+
+    /** Menü-GUI mit Klick-Aktionen (rows = 1 bis 6). In einem CreeMCPlugin einfacher: gui(titel, reihen). */
+    public static Gui gui(org.bukkit.plugin.Plugin plugin, String title, int rows) { return new Gui(plugin, title, rows); }
+
+    /** Seitenleiste für einen Spieler: CreeMC.sidebar(p, "&amp;6Titel").lines("Zeile 1", "Zeile 2"). */
+    public static Sidebar sidebar(Player p, String title) { return new Sidebar(p, title); }
+
+    /** Bossbar für einen Spieler zeigen; Farbe: pink, blue, red, green, yellow, purple, white. -> zum späteren Ändern/Entfernen. */
+    public static org.bukkit.boss.BossBar bossBar(Player p, String text, double progress, String color) {
+        org.bukkit.boss.BarColor c;
+        try {
+            c = org.bukkit.boss.BarColor.valueOf(color == null ? "PINK" : color.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            c = org.bukkit.boss.BarColor.PINK;
+        }
+        org.bukkit.boss.BossBar bar = org.bukkit.Bukkit.createBossBar(color(text), c, org.bukkit.boss.BarStyle.SOLID);
+        bar.setProgress(Math.max(0, Math.min(1, progress)));
+        bar.addPlayer(p);
+        return bar;
+    }
+
+    /** Partikel für alle in der Nähe, z.B. particle("heart", x, y, z, 5). */
+    public static void particle(String name, double x, double y, double z, int count) {
+        b().call("particle", "name", name.contains(":") ? name : "minecraft:" + name, "x", x, "y", y, "z", z, "dx", 0.3, "dy", 0.3,
+                "dz", 0.3, "speed", 0.0, "count", count);
+    }
+
+    /** Farbiger Staub (rgb wie 0xFF0000 = rot). */
+    public static void dust(double x, double y, double z, int rgb, float size, int count) {
+        b().call("particle", "name", "minecraft:dust", "x", x, "y", y, "z", z, "dx", 0.2, "dy", 0.2, "dz", 0.2, "speed", 0.0,
+                "count", count, "color", rgb, "size", (double) size);
+    }
+
+    /** Partikel-Namen, die der Server kennt. */
+    public static List<String> particles() {
+        List<String> out = new ArrayList<>();
+        for (Object o : Json.list(b().request("particles"))) out.add(String.valueOf(o));
+        return out;
+    }
+
+    /** Fliegen erlauben (auch im Überleben). */
+    public static void allowFlight(Player p, boolean allow) { p.setAllowFlight(allow); }
+
+    /** Spieler für einen anderen unsichtbar machen (auch aus der Tab-Liste). */
+    public static void hide(Player viewer, Player target) { viewer.hidePlayer(null, target); }
+
+    public static void show(Player viewer, Player target) { viewer.showPlayer(null, target); }
 }

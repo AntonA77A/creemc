@@ -5,6 +5,7 @@
 #include <map>
 #include <set>
 
+#include "api.hpp"
 #include "blocks.hpp"
 #include "buffer.hpp"
 #include "data.hpp"
@@ -557,7 +558,10 @@ void hostileAi(Mob& m) {
             m.lookAt(target->x, target->z);
             if (m.fuse >= 30) {
                 m.remove();
-                explode(s, m.x, m.y + 0.5, m.z, 3.0, s.gameRules().b("mobGriefing"));
+                json::Object ed;
+                ed["entity"] = api::entitySnap(&m);
+                if (!api::fire(s, "entity_explode", nullptr, std::move(ed)))
+                    explode(s, m.x, m.y + 0.5, m.z, 3.0, s.gameRules().b("mobGriefing"));
             }
             return;
         }
@@ -636,7 +640,9 @@ public:
         Entity::tick();
         if (--fuse <= 0 && !removed) {
             remove();
-            explode(server, x, y + 0.0625, z, 4.0);
+            json::Object ed;
+            ed["entity"] = api::entitySnap(this);
+            if (!api::fire(server, "entity_explode", nullptr, std::move(ed))) explode(server, x, y + 0.0625, z, 4.0);
         }
     }
 };
@@ -720,6 +726,14 @@ void tickPlayers(Server& s) {
                 if (tick - p->usingItem->start >= 32) {
                     int slot = p->usingItem->hand == 0 ? 36 + p->heldSlot : 45;
                     auto it = p->inventory.find(slot);
+                    json::Object cd;
+                    cd["item"] = p->usingItem->item;
+                    if (it != p->inventory.end() && it->second.first == p->usingItem->item &&
+                        api::fire(s, "player_item_consume", p, std::move(cd))) {
+                        p->finishUsingItem();
+                        p->syncInventory();
+                        continue;
+                    }
                     if (it != p->inventory.end() && it->second.first == p->usingItem->item) {
                         p->setSlot(slot, it->second.first, it->second.second - 1);
                         p->setFood(p->food + int(food[0].asDouble()), p->saturation + float(food[1].asDouble()));
@@ -845,7 +859,18 @@ std::vector<std::string> mobTypes() {
 void spawnMobs(Server& s, const std::string& kind, double x, double y, double z, int count) {
     for (int i = 0; i < count; ++i) {
         float hp = PASSIVE.count(kind) ? PASSIVE.at(kind) : HOSTILE.count(kind) ? HOSTILE.at(kind) : 10.0f;
-        Mob* m = s.spawnMob(kind, x + randDouble(-1, 1), y, z + randDouble(-1, 1), hp);
+        double mx = x + randDouble(-1, 1), mz = z + randDouble(-1, 1);
+        if (s.bridge().listens("creature_spawn")) {   // Plugins dürfen das Spawnen verhindern
+            json::Object cd;
+            cd["entity"] = json::Object{};
+            cd["entity"].asObject()["id"] = -1;
+            cd["entity"].asObject()["type"] = kind;
+            cd["entity"].asObject()["x"] = mx;
+            cd["entity"].asObject()["y"] = y;
+            cd["entity"].asObject()["z"] = mz;
+            if (api::fire(s, "creature_spawn", nullptr, std::move(cd))) continue;
+        }
+        Mob* m = s.spawnMob(kind, mx, y, mz, hp);
         if (HOSTILE.count(kind)) m->ai = hostileAi;
         else m->ai = passiveAi;
     }
@@ -1060,20 +1085,37 @@ void onInteractEntity(Player& p, int target, int hand) {
 }
 
 void onMobDeath(Server& s, Mob& mob, int killer) {
-    if (!s.gameRules().b("doMobLoot")) return;
+    bool loot = s.gameRules().b("doMobLoot");
     Player* kp = s.playerById(killer);
     int looting = kp ? enchantLevel(kp->heldItem(), "looting") : 0;
+    std::vector<std::pair<std::string, int>> drops;
     auto it = DROPS.find(mob.type);
-    if (it != DROPS.end()) {
+    if (loot && it != DROPS.end()) {
         for (const auto& d : it->second) {
             int n = randInt(d.lo, d.hi) + (looting ? randInt(0, looting) : 0);
             if (n <= 0) continue;
             std::string item = d.item;
             auto c = COOKED.find(item);
             if (mob.fireTicks > 0 && c != COOKED.end()) item = c->second;
-            s.dropItem(mob.x, mob.y + 0.5, mob.z, ns(item), n);
+            drops.emplace_back(ns(item), n);
         }
     }
+    if (s.bridge().listens("entity_death")) {   // Plugins dürfen die Drops ändern
+        json::Object d;
+        d["entity"] = api::entitySnap(&mob);
+        json::Array da;
+        for (const auto& [item, n] : drops) da.push_back(json::Array{item, n});
+        d["drops"] = json::Value(std::move(da));
+        if (kp) d["killer"] = s.bridge().snap(kp);
+        json::Value r = s.bridge().event("entity_death", std::move(d));
+        if (r["drops"].isArray()) {
+            drops.clear();
+            for (const auto& v : r["drops"].asArray())
+                if (v.isArray() && v.size() >= 2 && v[0].isString()) drops.emplace_back(v[0].asString(), int(v[1].asInt(1)));
+        }
+    }
+    for (const auto& [item, n] : drops) s.dropItem(mob.x, mob.y + 0.5, mob.z, item, n);
+    if (!loot) return;
     auto xp = MOB_XP.find(mob.type);
     if (kp && xp != MOB_XP.end()) kp->giveXp(randInt(xp->second.first, xp->second.second));
 }

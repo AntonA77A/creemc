@@ -83,6 +83,9 @@ public abstract class CreeMCPlugin extends JavaPlugin implements Listener {
     /** Alle 'ticks' Ticks ausführen. */
     protected BukkitTask every(long ticks, Runnable task) { return getServer().getScheduler().runTaskTimer(this, task, ticks, ticks); }
 
+    /** Menü-GUI mit Klick-Aktionen (rows = 1 bis 6 Reihen). */
+    protected Gui gui(String title, int rows) { return new Gui(this, title, rows); }
+
     /** Nachricht mit &amp;-Farbcodes an einen Spieler oder die Konsole. */
     protected static void msg(CommandSender to, String message) { to.sendMessage(CreeMC.color(message)); }
 

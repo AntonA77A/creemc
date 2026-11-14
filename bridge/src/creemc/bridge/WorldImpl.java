@@ -111,4 +111,75 @@ public final class WorldImpl implements World {
     @Override public int hashCode() { return uid.hashCode(); }
 
     @Override public String toString() { return "CraftWorld{name=" + name + "}"; }
+    // ---- erweiterte API ----
+
+    @Override
+    public boolean createExplosion(double x, double y, double z, float power, boolean setFire, boolean breakBlocks) {
+        bridge.call("explode", "x", x, "y", y, "z", z, "power", (double) power, "break", breakBlocks);
+        return true;
+    }
+
+    @Override
+    public List<org.bukkit.entity.Entity> getEntities() {
+        List<org.bukkit.entity.Entity> out = new java.util.ArrayList<>();
+        for (Object o : Json.list(bridge.request("entities"))) out.add(bridge.server.entity(Json.obj(o)));
+        return out;
+    }
+
+    @Override
+    public org.bukkit.entity.Entity spawnEntity(Location l, org.bukkit.entity.EntityType type) {
+        if (type == org.bukkit.entity.EntityType.TNT) {
+            bridge.call("tnt", "x", l.getX(), "y", l.getY(), "z", l.getZ(), "fuse", 80);
+            return null;
+        }
+        int id = (int) Json.num(bridge.request("spawn_mob", "type", type.name().toLowerCase(), "x", l.getX(), "y", l.getY(), "z", l.getZ()), -1);
+        if (id < 0) throw new IllegalArgumentException("CreeMC kann " + type + " (noch) nicht erzeugen");
+        Object snap = bridge.request("entity", "id", id);
+        return snap == null ? null : bridge.server.entity(Json.obj(snap));
+    }
+
+    @Override
+    public void strikeLightningEffect(Location l) {
+        playSound(l, "entity.lightning_bolt.thunder", 10000f, 0.8f);
+        spawnParticle(org.bukkit.Particle.FLASH, l.getX(), l.getY() + 1, l.getZ(), 1, 0, 0, 0, 0, null, true);
+    }
+
+    @Override
+    @SuppressWarnings("unchecked")
+    public <T> T getGameRuleValue(org.bukkit.GameRule<T> rule) {
+        String v = getGameRuleValue(rule.getName());
+        if (v == null) return null;
+        return rule.getType() == Boolean.class ? (T) Boolean.valueOf(v) : (T) Integer.valueOf(v);
+    }
+
+    @Override
+    public <T> boolean setGameRule(org.bukkit.GameRule<T> rule, T value) { return setGameRuleValue(rule.getName(), String.valueOf(value)); }
+
+    @Override
+    public String getGameRuleValue(String rule) {
+        Object v = bridge.request("gamerule", "rule", rule);
+        return v == null ? null : String.valueOf(v);
+    }
+
+    @Override
+    public boolean setGameRuleValue(String rule, String value) { return Boolean.TRUE.equals(bridge.request("set_gamerule", "rule", rule, "value", value)); }
+
+    @Override
+    public <T> void spawnParticle(org.bukkit.Particle particle, double x, double y, double z, int count, double ox, double oy, double oz,
+                                  double extra, T data, boolean force) {
+        bridge.call("particle", particleArgs(null, particle, x, y, z, count, ox, oy, oz, extra, data, force));
+    }
+
+    /** Auftrag "particle" für den Server (to = null: alle in der Nähe). */
+    static Object[] particleArgs(String to, org.bukkit.Particle particle, double x, double y, double z, int count, double ox, double oy,
+                                 double oz, double extra, Object data, boolean force) {
+        List<Object> a = new java.util.ArrayList<>(List.of("name", particle.getKey().asString(), "x", x, "y", y, "z", z, "dx", ox, "dy", oy,
+                "dz", oz, "speed", extra, "count", count, "force", force));
+        if (to != null) a.addAll(List.of("to", to));
+        if (data instanceof org.bukkit.Particle.DustOptions d) a.addAll(List.of("color", d.getColor().asRGB(), "size", (double) d.getSize()));
+        else if (data instanceof org.bukkit.Color c) a.addAll(List.of("color", c.asRGB()));
+        else if (data instanceof org.bukkit.Material m) a.addAll(List.of("block", m.getKey().asString()));
+        else if (data instanceof String s) a.addAll(List.of("block", s));
+        return a.toArray();
+    }
 }

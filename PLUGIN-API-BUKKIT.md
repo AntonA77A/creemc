@@ -50,6 +50,33 @@ void sendActionBar(Component)
 void sendActionBar(ComponentLike)
 ```
 
+## `net.kyori.adventure.bossbar`
+
+### BossBar (class)
+
+```java
+float MIN_PROGRESS
+float MAX_PROGRESS
+BossBar bossBar(Component, float, BossBar$Color, BossBar$Overlay)
+BossBar bossBar(Component, float, BossBar$Color, BossBar$Overlay, Set<BossBar$Flag>)
+void creeSender(function.Consumer<Object[]>)
+UUID creeId()
+Set<UUID> creeViewers()
+int creeFlags()
+Component name()
+BossBar name(Component)
+float progress()
+BossBar progress(float)
+BossBar$Color color()
+BossBar color(BossBar$Color)
+BossBar$Overlay overlay()
+BossBar overlay(BossBar$Overlay)
+Set<BossBar$Flag> flags()
+BossBar addFlag(BossBar$Flag)
+BossBar removeFlag(BossBar$Flag)
+boolean hasFlag(BossBar$Flag)
+```
+
 ## `net.kyori.adventure.text`
 
 ### Component (interface)
@@ -290,6 +317,15 @@ void shutdown()
 double[] getTPS()
 void reload()
 void savePlayers()
+Inventory createInventory(InventoryHolder, int)
+Inventory createInventory(InventoryHolder, int, String)
+Inventory createInventory(InventoryHolder, int, Component)
+Inventory createInventory(InventoryHolder, InventoryType)
+Inventory createInventory(InventoryHolder, InventoryType, String)
+Inventory createInventory(InventoryHolder, InventoryType, Component)
+BossBar createBossBar(String, BarColor, BarStyle, ..)
+ScoreboardManager getScoreboardManager()
+ItemFactory getItemFactory()
 ```
 
 ### ChatColor (class)
@@ -331,6 +367,36 @@ String translateAlternateColorCodes(char, String)
 String getLastColors(String)
 ```
 
+### Color (class)
+
+```java
+Color WHITE
+Color SILVER
+Color GRAY
+Color BLACK
+Color RED
+Color MAROON
+Color YELLOW
+Color OLIVE
+Color LIME
+Color GREEN
+Color AQUA
+Color TEAL
+Color BLUE
+Color NAVY
+Color FUCHSIA
+Color PURPLE
+Color ORANGE
+Color fromRGB(int)
+Color fromRGB(int, int, int)
+int asRGB()
+int getRed()
+int getGreen()
+int getBlue()
+boolean equals(Object)
+int hashCode()
+```
+
 ### GameMode (class)
 
 ```java
@@ -342,6 +408,67 @@ GameMode[] values()
 GameMode valueOf(String)
 int getValue()
 GameMode getByValue(int)
+```
+
+### GameRule (class)
+
+```java
+GameRule<Boolean> ANNOUNCE_ADVANCEMENTS
+GameRule<Boolean> BLOCK_EXPLOSION_DROP_DECAY
+GameRule<Boolean> COMMAND_BLOCK_OUTPUT
+GameRule<Boolean> DISABLE_ELYTRA_MOVEMENT_CHECK
+GameRule<Boolean> DISABLE_RAIDS
+GameRule<Boolean> DO_DAYLIGHT_CYCLE
+GameRule<Boolean> DO_ENTITY_DROPS
+GameRule<Boolean> DO_FIRE_TICK
+GameRule<Boolean> DO_IMMEDIATE_RESPAWN
+GameRule<Boolean> DO_INSOMNIA
+GameRule<Boolean> DO_LIMITED_CRAFTING
+GameRule<Boolean> DO_MOB_LOOT
+GameRule<Boolean> DO_MOB_SPAWNING
+GameRule<Boolean> DO_PATROL_SPAWNING
+GameRule<Boolean> DO_TILE_DROPS
+GameRule<Boolean> DO_TRADER_SPAWNING
+GameRule<Boolean> DO_VINES_SPREAD
+GameRule<Boolean> DO_WARDEN_SPAWNING
+GameRule<Boolean> DO_WEATHER_CYCLE
+GameRule<Boolean> DROWNING_DAMAGE
+GameRule<Boolean> ENDER_PEARLS_VANISH_ON_DEATH
+GameRule<Boolean> FALL_DAMAGE
+GameRule<Boolean> FIRE_DAMAGE
+GameRule<Boolean> FORGIVE_DEAD_PLAYERS
+GameRule<Boolean> FREEZE_DAMAGE
+GameRule<Boolean> GLOBAL_SOUND_EVENTS
+GameRule<Boolean> KEEP_INVENTORY
+GameRule<Boolean> LAVA_SOURCE_CONVERSION
+GameRule<Boolean> LOG_ADMIN_COMMANDS
+GameRule<Boolean> MOB_EXPLOSION_DROP_DECAY
+GameRule<Boolean> MOB_GRIEFING
+GameRule<Boolean> NATURAL_REGENERATION
+GameRule<Boolean> PROJECTILES_CAN_BREAK_BLOCKS
+GameRule<Boolean> PVP
+GameRule<Boolean> REDUCED_DEBUG_INFO
+GameRule<Boolean> SEND_COMMAND_FEEDBACK
+GameRule<Boolean> SHOW_DEATH_MESSAGES
+GameRule<Boolean> SPAWN_MONSTERS
+GameRule<Boolean> SPECTATORS_GENERATE_CHUNKS
+GameRule<Boolean> TNT_EXPLODES
+GameRule<Boolean> TNT_EXPLOSION_DROP_DECAY
+GameRule<Boolean> UNIVERSAL_ANGER
+GameRule<Boolean> WATER_SOURCE_CONVERSION
+GameRule<Integer> MAX_COMMAND_CHAIN_LENGTH
+GameRule<Integer> MAX_ENTITY_CRAMMING
+GameRule<Integer> PLAYERS_SLEEPING_PERCENTAGE
+GameRule<Integer> RANDOM_TICK_SPEED
+GameRule<Integer> SNOW_ACCUMULATION_HEIGHT
+GameRule<Integer> SPAWN_CHUNK_RADIUS
+GameRule<Integer> SPAWN_RADIUS
+String getName()
+Class<T> getType()
+NamespacedKey getKey()
+GameRule<?> getByName(String)
+GameRule<?>[] values()
+String toString()
 ```
 
 ### Location (class)
@@ -2248,6 +2375,144 @@ Player getPlayer()
 boolean hasPlayedBefore()
 ```
 
+### Particle (class)
+
+```java
+Particle ANGRY_VILLAGER
+Particle ASH
+Particle BLOCK
+Particle BLOCK_MARKER
+Particle BUBBLE
+Particle BUBBLE_COLUMN_UP
+Particle BUBBLE_POP
+Particle CAMPFIRE_COSY_SMOKE
+Particle CAMPFIRE_SIGNAL_SMOKE
+Particle CHERRY_LEAVES
+Particle CLOUD
+Particle COMPOSTER
+Particle CRIMSON_SPORE
+Particle CRIT
+Particle CURRENT_DOWN
+Particle DAMAGE_INDICATOR
+Particle DOLPHIN
+Particle DRAGON_BREATH
+Particle DRIPPING_DRIPSTONE_LAVA
+Particle DRIPPING_DRIPSTONE_WATER
+Particle DRIPPING_HONEY
+Particle DRIPPING_LAVA
+Particle DRIPPING_OBSIDIAN_TEAR
+Particle DRIPPING_WATER
+Particle DUST
+Particle DUST_COLOR_TRANSITION
+Particle DUST_PILLAR
+Particle DUST_PLUME
+Particle EFFECT
+Particle EGG_CRACK
+Particle ELDER_GUARDIAN
+Particle ELECTRIC_SPARK
+Particle ENCHANT
+Particle ENCHANTED_HIT
+Particle END_ROD
+Particle ENTITY_EFFECT
+Particle EXPLOSION
+Particle EXPLOSION_EMITTER
+Particle FALLING_DRIPSTONE_LAVA
+Particle FALLING_DRIPSTONE_WATER
+Particle FALLING_DUST
+Particle FALLING_HONEY
+Particle FALLING_LAVA
+Particle FALLING_NECTAR
+Particle FALLING_OBSIDIAN_TEAR
+Particle FALLING_SPORE_BLOSSOM
+Particle FALLING_WATER
+Particle FIREWORK
+Particle FISHING
+Particle FLAME
+Particle FLASH
+Particle GLOW
+Particle GLOW_SQUID_INK
+Particle GUST
+Particle GUST_EMITTER_LARGE
+Particle GUST_EMITTER_SMALL
+Particle HAPPY_VILLAGER
+Particle HEART
+Particle INFESTED
+Particle INSTANT_EFFECT
+Particle ITEM
+Particle ITEM_COBWEB
+Particle ITEM_SLIME
+Particle ITEM_SNOWBALL
+Particle LANDING_HONEY
+Particle LANDING_LAVA
+Particle LANDING_OBSIDIAN_TEAR
+Particle LARGE_SMOKE
+Particle LAVA
+Particle MYCELIUM
+Particle NAUTILUS
+Particle NOTE
+Particle OMINOUS_SPAWNING
+Particle POOF
+Particle PORTAL
+Particle RAID_OMEN
+Particle RAIN
+Particle REVERSE_PORTAL
+Particle SCRAPE
+Particle SCULK_CHARGE
+Particle SCULK_CHARGE_POP
+Particle SCULK_SOUL
+Particle SHRIEK
+Particle SMALL_FLAME
+Particle SMALL_GUST
+Particle SMOKE
+Particle SNEEZE
+Particle SNOWFLAKE
+Particle SONIC_BOOM
+Particle SOUL
+Particle SOUL_FIRE_FLAME
+Particle SPIT
+Particle SPLASH
+Particle SPORE_BLOSSOM_AIR
+Particle SQUID_INK
+Particle SWEEP_ATTACK
+Particle TOTEM_OF_UNDYING
+Particle TRIAL_OMEN
+Particle TRIAL_SPAWNER_DETECTION
+Particle TRIAL_SPAWNER_DETECTION_OMINOUS
+Particle UNDERWATER
+Particle VAULT_CONNECTION
+Particle VIBRATION
+Particle WARPED_SPORE
+Particle WAX_OFF
+Particle WAX_ON
+Particle WHITE_ASH
+Particle WHITE_SMOKE
+Particle WITCH
+Particle BLOCK_CRUMBLE
+Particle COPPER_FIRE_FLAME
+Particle FIREFLY
+Particle GEYSER
+Particle GEYSER_BASE
+Particle GEYSER_PLUME
+Particle GEYSER_POOF
+Particle NOXIOUS_GAS
+Particle NOXIOUS_GAS_CLOUD
+Particle ORANGE_POPLAR_LEAVES
+Particle PALE_OAK_LEAVES
+Particle PAUSE_MOB_GROWTH
+Particle RED_POPLAR_LEAVES
+Particle RESET_MOB_GROWTH
+Particle SULFUR_BUBBLES
+Particle SULFUR_CUBE_GOO
+Particle TINTED_LEAVES
+Particle TRAIL
+Particle YELLOW_POPLAR_LEAVES
+Particle[] values()
+Particle valueOf(String)
+NamespacedKey getKey()
+NamespacedKey key()
+Class<?> getDataType()
+```
+
 ### Server (interface)
 
 ```java
@@ -2286,6 +2551,15 @@ void shutdown()
 double[] getTPS()
 void reload()
 void savePlayers()
+Inventory createInventory(InventoryHolder, int)
+Inventory createInventory(InventoryHolder, int, String)
+Inventory createInventory(InventoryHolder, int, Component)
+Inventory createInventory(InventoryHolder, InventoryType)
+Inventory createInventory(InventoryHolder, InventoryType, String)
+Inventory createInventory(InventoryHolder, InventoryType, Component)
+BossBar createBossBar(String, BarColor, BarStyle, ..)
+ScoreboardManager getScoreboardManager()
+ItemFactory getItemFactory()
 ```
 
 ### World (interface)
@@ -2313,6 +2587,29 @@ boolean isDayTime()
 void playSound(Location, String, float, float)
 void createExplosion(Location, float)
 boolean createExplosion(double, double, double, float)
+boolean createExplosion(double, double, double, float, boolean, boolean)
+boolean createExplosion(Location, float, boolean, boolean)
+List<Entity> getEntities()
+List<LivingEntity> getLivingEntities()
+Collection<Entity> getNearbyEntities(Location, double, double, double)
+Entity spawnEntity(Location, EntityType)
+void strikeLightningEffect(Location)
+<T> T getGameRuleValue(GameRule<T>)
+<T> boolean setGameRule(GameRule<T>, T)
+<T> T getGameRuleDefault(GameRule<T>)
+String getGameRuleValue(String)
+boolean setGameRuleValue(String, String)
+boolean isGameRule(String)
+String[] getGameRules()
+<T> void spawnParticle(Particle, double, double, double, int, double, double, double, double, T, boolean)
+void spawnParticle(Particle, Location, int)
+void spawnParticle(Particle, double, double, double, int)
+<T> void spawnParticle(Particle, Location, int, T)
+void spawnParticle(Particle, Location, int, double, double, double)
+void spawnParticle(Particle, Location, int, double, double, double, double)
+<T> void spawnParticle(Particle, Location, int, double, double, double, T)
+<T> void spawnParticle(Particle, Location, int, double, double, double, double, T)
+<T> void spawnParticle(Particle, Location, int, double, double, double, double, T, boolean)
 ```
 
 ## `org.bukkit.block`
@@ -2360,6 +2657,72 @@ int getModZ()
 Vector getDirection()
 BlockFace getOppositeFace()
 BlockFace fromProtocol(int)
+```
+
+## `org.bukkit.boss`
+
+### BarColor (class)
+
+```java
+BarColor PINK
+BarColor BLUE
+BarColor RED
+BarColor GREEN
+BarColor YELLOW
+BarColor PURPLE
+BarColor WHITE
+BarColor[] values()
+BarColor valueOf(String)
+```
+
+### BarFlag (class)
+
+```java
+BarFlag DARKEN_SKY
+BarFlag PLAY_BOSS_MUSIC
+BarFlag CREATE_FOG
+BarFlag[] values()
+BarFlag valueOf(String)
+```
+
+### BarStyle (class)
+
+```java
+BarStyle SOLID
+BarStyle SEGMENTED_6
+BarStyle SEGMENTED_10
+BarStyle SEGMENTED_12
+BarStyle SEGMENTED_20
+BarStyle[] values()
+BarStyle valueOf(String)
+```
+
+### BossBar (interface)
+
+```java
+String getTitle()
+void setTitle(String)
+BarColor getColor()
+void setColor(BarColor)
+BarStyle getStyle()
+void setStyle(BarStyle)
+void removeFlag(BarFlag)
+void addFlag(BarFlag)
+boolean hasFlag(BarFlag)
+void setProgress(double)
+double getProgress()
+void addPlayer(Player)
+void removePlayer(Player)
+void removeAll()
+List<Player> getPlayers()
+void setVisible(boolean)
+boolean isVisible()
+```
+
+### KeyedBossBar (interface)
+
+```java
+NamespacedKey getKey()
 ```
 
 ## `org.bukkit.command`
@@ -2608,6 +2971,87 @@ YamlConfiguration loadConfiguration(java.io.Reader)
 ConfigurationSection getParent()
 ```
 
+## `org.bukkit.enchantments`
+
+### Enchantment (class)
+
+```java
+Enchantment AQUA_AFFINITY
+Enchantment BANE_OF_ARTHROPODS
+Enchantment BINDING_CURSE
+Enchantment BLAST_PROTECTION
+Enchantment BREACH
+Enchantment CHANNELING
+Enchantment DENSITY
+Enchantment DEPTH_STRIDER
+Enchantment EFFICIENCY
+Enchantment FEATHER_FALLING
+Enchantment FIRE_ASPECT
+Enchantment FIRE_PROTECTION
+Enchantment FLAME
+Enchantment FORTUNE
+Enchantment FROST_WALKER
+Enchantment IMPALING
+Enchantment INFINITY
+Enchantment KNOCKBACK
+Enchantment LOOTING
+Enchantment LOYALTY
+Enchantment LUCK_OF_THE_SEA
+Enchantment LUNGE
+Enchantment LURE
+Enchantment MENDING
+Enchantment MULTISHOT
+Enchantment PIERCING
+Enchantment POWER
+Enchantment PROJECTILE_PROTECTION
+Enchantment PROTECTION
+Enchantment PUNCH
+Enchantment QUICK_CHARGE
+Enchantment RESPIRATION
+Enchantment RIPTIDE
+Enchantment SHARPNESS
+Enchantment SILK_TOUCH
+Enchantment SMITE
+Enchantment SOUL_SPEED
+Enchantment SWEEPING_EDGE
+Enchantment SWIFT_SNEAK
+Enchantment THORNS
+Enchantment UNBREAKING
+Enchantment VANISHING_CURSE
+Enchantment WIND_BURST
+Enchantment DAMAGE_ALL
+Enchantment DAMAGE_UNDEAD
+Enchantment DAMAGE_ARTHROPODS
+Enchantment DURABILITY
+Enchantment DIG_SPEED
+Enchantment LOOT_BONUS_BLOCKS
+Enchantment LOOT_BONUS_MOBS
+Enchantment PROTECTION_ENVIRONMENTAL
+Enchantment PROTECTION_FIRE
+Enchantment PROTECTION_FALL
+Enchantment PROTECTION_EXPLOSIONS
+Enchantment PROTECTION_PROJECTILE
+Enchantment OXYGEN
+Enchantment WATER_WORKER
+Enchantment ARROW_DAMAGE
+Enchantment ARROW_KNOCKBACK
+Enchantment ARROW_FIRE
+Enchantment ARROW_INFINITE
+Enchantment LUCK
+NamespacedKey getKey()
+NamespacedKey key()
+String getName()
+int getMaxLevel()
+int getStartLevel()
+boolean isCursed()
+boolean isTreasure()
+Enchantment getByKey(NamespacedKey)
+Enchantment getByName(String)
+Enchantment[] values()
+Collection<Enchantment> all()
+String toString()
+```
+
 ## `org.bukkit.entity`
 
 ### Damageable (interface)
@@ -2654,9 +3098,15 @@ EntityType SPIDER
 EntityType CREEPER
 EntityType SKELETON
 EntityType TNT
+EntityType FALLING_BLOCK
+EntityType EXPERIENCE_ORB
+EntityType ARROW
 EntityType UNKNOWN
 EntityType[] values()
 EntityType valueOf(String)
+boolean isAlive()
+boolean isSpawnable()
+NamespacedKey getKey()
 EntityType fromName(String)
 ```
 
@@ -2737,6 +3187,29 @@ void setAllowFlight(boolean)
 void setFlying(boolean)
 boolean isConnected()
 String getClientBrandName()
+InventoryView openInventory(Inventory)
+InventoryView getOpenInventory()
+Scoreboard getScoreboard()
+void setScoreboard(Scoreboard)
+void hidePlayer(Plugin, Player)
+void showPlayer(Plugin, Player)
+void hidePlayer(Player)
+void showPlayer(Player)
+boolean canSee(Player)
+float getFlySpeed()
+void setFlySpeed(float)
+float getWalkSpeed()
+void setWalkSpeed(float)
+<T> void spawnParticle(Particle, double, double, double, int, double, double, double, double, T)
+void spawnParticle(Particle, Location, int)
+void spawnParticle(Particle, double, double, double, int)
+<T> void spawnParticle(Particle, Location, int, T)
+void spawnParticle(Particle, Location, int, double, double, double)
+void spawnParticle(Particle, Location, int, double, double, double, double)
+<T> void spawnParticle(Particle, Location, int, double, double, double, T)
+<T> void spawnParticle(Particle, Location, int, double, double, double, double, T)
+void showBossBar(BossBar)
+void hideBossBar(BossBar)
 ```
 
 ## `org.bukkit.event`
@@ -2857,6 +3330,18 @@ HandlerList getHandlerList()
 
 ## `org.bukkit.event.entity`
 
+### CreatureSpawnEvent (class)
+
+```java
+CreatureSpawnEvent(Entity, CreatureSpawnEvent$SpawnReason)
+CreatureSpawnEvent$SpawnReason getSpawnReason()
+Location getLocation()
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
 ### EntityDamageByEntityEvent (class)
 
 ```java
@@ -2901,6 +3386,48 @@ Entity getEntity()
 EntityType getEntityType()
 ```
 
+### EntityExplodeEvent (class)
+
+```java
+EntityExplodeEvent(Entity, Location, List<Block>, float)
+Location getLocation()
+List<Block> blockList()
+float getYield()
+void setYield(float)
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### EntityPickupItemEvent (class)
+
+```java
+EntityPickupItemEvent(LivingEntity, Item, int)
+Item getItem()
+int getRemaining()
+LivingEntity getEntity()
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+Entity getEntity()
+```
+
+### FoodLevelChangeEvent (class)
+
+```java
+FoodLevelChangeEvent(HumanEntity, int)
+int getFoodLevel()
+void setFoodLevel(int)
+HumanEntity getEntity()
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+Entity getEntity()
+```
+
 ### PlayerDeathEvent (class)
 
 ```java
@@ -2919,6 +3446,149 @@ HandlerList getHandlers()
 HandlerList getHandlerList()
 LivingEntity getEntity()
 Entity getEntity()
+```
+
+## `org.bukkit.event.inventory`
+
+### ClickType (class)
+
+```java
+ClickType LEFT
+ClickType SHIFT_LEFT
+ClickType RIGHT
+ClickType SHIFT_RIGHT
+ClickType WINDOW_BORDER_LEFT
+ClickType WINDOW_BORDER_RIGHT
+ClickType MIDDLE
+ClickType NUMBER_KEY
+ClickType DOUBLE_CLICK
+ClickType DROP
+ClickType CONTROL_DROP
+ClickType CREATIVE
+ClickType SWAP_OFFHAND
+ClickType UNKNOWN
+ClickType[] values()
+ClickType valueOf(String)
+boolean isKeyboardClick()
+boolean isCreativeAction()
+boolean isRightClick()
+boolean isLeftClick()
+boolean isShiftClick()
+ClickType fromVanilla(int, int, int)
+```
+
+### InventoryAction (class)
+
+```java
+InventoryAction NOTHING
+InventoryAction PICKUP_ALL
+InventoryAction PICKUP_SOME
+InventoryAction PICKUP_HALF
+InventoryAction PICKUP_ONE
+InventoryAction PLACE_ALL
+InventoryAction PLACE_SOME
+InventoryAction PLACE_ONE
+InventoryAction SWAP_WITH_CURSOR
+InventoryAction DROP_ALL_CURSOR
+InventoryAction DROP_ONE_CURSOR
+InventoryAction DROP_ALL_SLOT
+InventoryAction DROP_ONE_SLOT
+InventoryAction MOVE_TO_OTHER_INVENTORY
+InventoryAction HOTBAR_MOVE_AND_READD
+InventoryAction HOTBAR_SWAP
+InventoryAction CLONE_STACK
+InventoryAction COLLECT_TO_CURSOR
+InventoryAction UNKNOWN
+InventoryAction[] values()
+InventoryAction valueOf(String)
+```
+
+### InventoryClickEvent (class)
+
+```java
+InventoryClickEvent(InventoryView, InventoryType$SlotType, int, ClickType, InventoryAction)
+InventoryClickEvent(InventoryView, InventoryType$SlotType, int, ClickType, InventoryAction, int)
+HumanEntity getWhoClicked()
+int getRawSlot()
+int getSlot()
+Inventory getClickedInventory()
+InventoryType$SlotType getSlotType()
+ClickType getClick()
+InventoryAction getAction()
+int getHotbarButton()
+boolean isLeftClick()
+boolean isRightClick()
+boolean isShiftClick()
+ItemStack getCurrentItem()
+void setCurrentItem(ItemStack)
+ItemStack getCursor()
+void setCreeItems(ItemStack, ItemStack)
+Event$Result getResult()
+void setResult(Event$Result)
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### InventoryCloseEvent (class)
+
+```java
+InventoryCloseEvent(InventoryView)
+InventoryCloseEvent(InventoryView, InventoryCloseEvent$Reason)
+HumanEntity getPlayer()
+InventoryCloseEvent$Reason getReason()
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### InventoryEvent (class)
+
+```java
+InventoryEvent(InventoryView)
+Inventory getInventory()
+InventoryView getView()
+List<HumanEntity> getViewers()
+```
+
+### InventoryOpenEvent (class)
+
+```java
+InventoryOpenEvent(InventoryView)
+HumanEntity getPlayer()
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### InventoryType (class)
+
+```java
+InventoryType CHEST
+InventoryType DISPENSER
+InventoryType DROPPER
+InventoryType FURNACE
+InventoryType WORKBENCH
+InventoryType CRAFTING
+InventoryType ENCHANTING
+InventoryType PLAYER
+InventoryType CREATIVE
+InventoryType ANVIL
+InventoryType ENDER_CHEST
+InventoryType HOPPER
+InventoryType SHULKER_BOX
+InventoryType BARREL
+InventoryType BLAST_FURNACE
+InventoryType SMOKER
+InventoryType MERCHANT
+InventoryType BREWING
+InventoryType[] values()
+InventoryType valueOf(String)
+int getDefaultSize()
+String getDefaultTitle()
+boolean isCreatable()
+InventoryType fromCree(String)
 ```
 
 ## `org.bukkit.event.player`
@@ -2963,6 +3633,17 @@ HandlerList getHandlerList()
 PlayerCommandPreprocessEvent(Player, String)
 String getMessage()
 void setMessage(String)
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### PlayerDropItemEvent (class)
+
+```java
+PlayerDropItemEvent(Player, Item)
+Item getItemDrop()
 boolean isCancelled()
 void setCancelled(boolean)
 HandlerList getHandlers()
@@ -3017,6 +3698,30 @@ HandlerList getHandlers()
 HandlerList getHandlerList()
 ```
 
+### PlayerItemConsumeEvent (class)
+
+```java
+PlayerItemConsumeEvent(Player, ItemStack)
+ItemStack getItem()
+void setItem(ItemStack)
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### PlayerItemHeldEvent (class)
+
+```java
+PlayerItemHeldEvent(Player, int, int)
+int getPreviousSlot()
+int getNewSlot()
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
 ### PlayerJoinEvent (class)
 
 ```java
@@ -3025,6 +3730,22 @@ Component joinMessage()
 void joinMessage(Component)
 String getJoinMessage()
 void setJoinMessage(String)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### PlayerKickEvent (class)
+
+```java
+PlayerKickEvent(Player, String, String)
+String getReason()
+void setReason(String)
+String getLeaveMessage()
+void setLeaveMessage(String)
+Component reason()
+void reason(Component)
+boolean isCancelled()
+void setCancelled(boolean)
 HandlerList getHandlers()
 HandlerList getHandlerList()
 ```
@@ -3061,6 +3782,31 @@ HandlerList getHandlerList()
 PlayerRespawnEvent(Player, Location)
 Location getRespawnLocation()
 void setRespawnLocation(Location)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### PlayerSwapHandItemsEvent (class)
+
+```java
+PlayerSwapHandItemsEvent(Player, ItemStack, ItemStack)
+ItemStack getMainHandItem()
+void setMainHandItem(ItemStack)
+ItemStack getOffHandItem()
+void setOffHandItem(ItemStack)
+boolean isCancelled()
+void setCancelled(boolean)
+HandlerList getHandlers()
+HandlerList getHandlerList()
+```
+
+### PlayerToggleFlightEvent (class)
+
+```java
+PlayerToggleFlightEvent(Player, boolean)
+boolean isFlying()
+boolean isCancelled()
+void setCancelled(boolean)
 HandlerList getHandlers()
 HandlerList getHandlerList()
 ```
@@ -3149,6 +3895,70 @@ boolean isEmpty()
 void clear()
 void clear(int)
 void remove(Material)
+void remove(ItemStack)
+InventoryHolder getHolder()
+List<HumanEntity> getViewers()
+InventoryType getType()
+int first(Material)
+int first(ItemStack)
+boolean contains(ItemStack)
+HashMap<Integer, ? extends ItemStack> all(Material)
+int getMaxStackSize()
+ItemStack[] getStorageContents()
+void setStorageContents(ItemStack[])
+Location getLocation()
+void close()
+```
+
+### InventoryHolder (interface)
+
+```java
+Inventory getInventory()
+```
+
+### InventoryView (class)
+
+```java
+InventoryView(Inventory, Inventory, HumanEntity, String, InventoryType)
+Inventory getTopInventory()
+Inventory getBottomInventory()
+HumanEntity getPlayer()
+InventoryType getType()
+String getTitle()
+String getOriginalTitle()
+Component title()
+int countSlots()
+Inventory getInventory(int)
+int convertSlot(int)
+ItemStack getItem(int)
+void setItem(int, ItemStack)
+void close()
+```
+
+### ItemFactory (class)
+
+```java
+ItemFactory INSTANCE
+ItemMeta getItemMeta(Material)
+boolean isApplicable(ItemMeta, Material)
+boolean equals(ItemMeta, ItemMeta)
+ItemMeta asMetaFor(ItemMeta, Material)
+```
+
+### ItemFlag (class)
+
+```java
+ItemFlag HIDE_ENCHANTS
+ItemFlag HIDE_ATTRIBUTES
+ItemFlag HIDE_UNBREAKABLE
+ItemFlag HIDE_DESTROYS
+ItemFlag HIDE_PLACED_ON
+ItemFlag HIDE_ADDITIONAL_TOOLTIP
+ItemFlag HIDE_DYE
+ItemFlag HIDE_ARMOR_TRIM
+ItemFlag HIDE_STORED_ENCHANTS
+ItemFlag[] values()
+ItemFlag valueOf(String)
 ```
 
 ### ItemStack (class)
@@ -3170,6 +3980,22 @@ boolean hasItemMeta()
 ItemMeta getItemMeta()
 boolean setItemMeta(ItemMeta)
 boolean isSimilar(ItemStack)
+void addEnchantment(Enchantment, int)
+void addUnsafeEnchantment(Enchantment, int)
+void addEnchantments(Map<Enchantment, Integer>)
+void addUnsafeEnchantments(Map<Enchantment, Integer>)
+int removeEnchantment(Enchantment)
+boolean containsEnchantment(Enchantment)
+int getEnchantmentLevel(Enchantment)
+Map<Enchantment, Integer> getEnchantments()
+ItemStack add(int)
+ItemStack subtract(int)
+ItemStack asQuantity(int)
+ItemStack asOne()
+Component displayName()
+boolean editMeta(function.Consumer<? super ItemMeta>)
+void lore(List<? extends Component>)
+List<Component> lore()
 ItemStack clone()
 boolean equals(Object)
 int hashCode()
@@ -3209,10 +4035,33 @@ String getDisplayName()
 void setDisplayName(String)
 Component displayName()
 void displayName(Component)
+boolean hasItemName()
+void itemName(Component)
 boolean hasLore()
 List<String> getLore()
 void setLore(List<String>)
+List<Component> lore()
 void lore(List<? extends Component>)
+boolean hasEnchants()
+boolean hasEnchant(Enchantment)
+int getEnchantLevel(Enchantment)
+Map<Enchantment, Integer> getEnchants()
+boolean addEnchant(Enchantment, int, boolean)
+boolean removeEnchant(Enchantment)
+void removeEnchantments()
+boolean hasConflictingEnchant(Enchantment)
+boolean isUnbreakable()
+void setUnbreakable(boolean)
+boolean hasCustomModelData()
+int getCustomModelData()
+void setCustomModelData(Integer)
+boolean hasEnchantmentGlintOverride()
+Boolean getEnchantmentGlintOverride()
+void setEnchantmentGlintOverride(Boolean)
+void addItemFlags(..)
+void removeItemFlags(..)
+Set<ItemFlag> getItemFlags()
+boolean hasItemFlag(ItemFlag)
 boolean isEmpty()
 ItemMeta clone()
 ```
@@ -3397,6 +4246,150 @@ Plugin getOwner()
 boolean isSync()
 boolean isCancelled()
 void cancel()
+```
+
+## `org.bukkit.scoreboard`
+
+### Criteria (class)
+
+```java
+Criteria DUMMY
+Criteria HEALTH
+Criteria DEATH_COUNT
+Criteria PLAYER_KILL_COUNT
+Criteria TOTAL_KILL_COUNT
+Criteria LEVEL
+Criteria FOOD
+Criteria XP
+Criteria create(String)
+String getName()
+boolean isReadOnly()
+RenderType getDefaultRenderType()
+```
+
+### DisplaySlot (class)
+
+```java
+DisplaySlot PLAYER_LIST
+DisplaySlot SIDEBAR
+DisplaySlot BELOW_NAME
+DisplaySlot[] values()
+DisplaySlot valueOf(String)
+int getId()
+```
+
+### Objective (interface)
+
+```java
+String getName()
+String getDisplayName()
+void setDisplayName(String)
+Component displayName()
+void displayName(Component)
+String getCriteria()
+Criteria getTrackedCriteria()
+boolean isModifiable()
+Scoreboard getScoreboard()
+void unregister()
+void setDisplaySlot(DisplaySlot)
+DisplaySlot getDisplaySlot()
+void setRenderType(RenderType)
+RenderType getRenderType()
+Score getScore(String)
+Score getScore(OfflinePlayer)
+```
+
+### RenderType (class)
+
+```java
+RenderType INTEGER
+RenderType HEARTS
+RenderType[] values()
+RenderType valueOf(String)
+```
+
+### Score (interface)
+
+```java
+String getEntry()
+Objective getObjective()
+int getScore()
+void setScore(int)
+boolean isScoreSet()
+void resetScore()
+Scoreboard getScoreboard()
+void customName(Component)
+Component customName()
+```
+
+### Scoreboard (interface)
+
+```java
+Objective registerNewObjective(String, String)
+Objective registerNewObjective(String, String, String)
+Objective registerNewObjective(String, String, String, RenderType)
+Objective registerNewObjective(String, Criteria, String)
+Objective registerNewObjective(String, Criteria, String, RenderType)
+Objective registerNewObjective(String, Criteria, Component)
+Objective registerNewObjective(String, Criteria, Component, RenderType)
+Objective getObjective(String)
+Objective getObjective(DisplaySlot)
+Set<Objective> getObjectives()
+Set<Objective> getObjectivesByCriteria(String)
+void clearSlot(DisplaySlot)
+Team registerNewTeam(String)
+Team getTeam(String)
+Set<Team> getTeams()
+Team getEntryTeam(String)
+Team getPlayerTeam(OfflinePlayer)
+Set<Score> getScores(String)
+void resetScores(String)
+void resetScores(OfflinePlayer)
+Set<String> getEntries()
+```
+
+### ScoreboardManager (interface)
+
+```java
+Scoreboard getMainScoreboard()
+Scoreboard getNewScoreboard()
+```
+
+### Team (interface)
+
+```java
+String getName()
+String getDisplayName()
+void setDisplayName(String)
+String getPrefix()
+void setPrefix(String)
+String getSuffix()
+void setSuffix(String)
+Component prefix()
+void prefix(Component)
+Component suffix()
+void suffix(Component)
+Component displayName()
+void displayName(Component)
+ChatColor getColor()
+void setColor(ChatColor)
+boolean allowFriendlyFire()
+void setAllowFriendlyFire(boolean)
+boolean canSeeFriendlyInvisibles()
+void setCanSeeFriendlyInvisibles(boolean)
+Team$OptionStatus getOption(Team$Option)
+void setOption(Team$Option, Team$OptionStatus)
+Set<String> getEntries()
+int getSize()
+Scoreboard getScoreboard()
+void addEntry(String)
+void addEntries(String...)
+boolean removeEntry(String)
+boolean hasEntry(String)
+void addPlayer(OfflinePlayer)
+boolean removePlayer(OfflinePlayer)
+boolean hasPlayer(OfflinePlayer)
+void unregister()
 ```
 
 ## `org.bukkit.util`

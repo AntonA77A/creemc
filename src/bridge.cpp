@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <thread>
 
+#include "api.hpp"
 #include "blocks.hpp"
 #include "buffer.hpp"
 #include "connection.hpp"
@@ -670,6 +671,7 @@ void JavaBridge::setListening(const json::Value& names) {
 // ---- Aufträge aus Java ------------------------------------------------------
 
 void JavaBridge::handleCall(const json::Value& m) {
+    if (api::handleCall(server_, m)) return;
     const std::string& op = m["op"].asString();
     Server& s = server_;
     Player* p = m["to"].isString() ? s.playerByUuid(Uuid::parse(m["to"].asString())) : nullptr;
@@ -817,6 +819,8 @@ void JavaBridge::handleCall(const json::Value& m) {
 }
 
 json::Value JavaBridge::handleRequest(const json::Value& m) {
+    json::Value apiOut;
+    if (api::handleRequest(server_, m, apiOut)) return apiOut;
     const std::string& op = m["op"].asString();
     Server& s = server_;
     if (op == "block") return stateString(s.world().getBlock(int(m["x"].asInt()), int(m["y"].asInt()), int(m["z"].asInt())));

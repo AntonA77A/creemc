@@ -59,6 +59,11 @@ public:
         int64_t start = 0;
     };
     std::optional<UsingItem> usingItem;   // gerade am Essen/Trinken
+    bool allowFlight = false;             // Fliegen im Überleben erlaubt (Plugins)
+    float flySpeed = 0.05f, walkSpeed = 0.1f;
+    std::set<Uuid> hiddenPlayers;         // diese Spieler sieht dieser Spieler nicht (hidePlayer)
+    bool canSee(const Player* other) const { return !hiddenPlayers.count(other->uuid); }
+    void refreshAbilities() { sendAbilities(); }
     std::set<ChunkPos> loadedChunks;
     std::optional<ChunkPos> center;
     std::string tabName;

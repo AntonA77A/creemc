@@ -82,4 +82,28 @@ public interface Server {
     void reload();
 
     void savePlayers();
+
+    // ---- Inventare, Bossbars, Scoreboards ----
+    org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, int size);
+
+    org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, int size, String title);
+
+    default org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, int size, net.kyori.adventure.text.Component title) {
+        return createInventory(owner, size, title == null ? null : title.toLegacy());
+    }
+
+    org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, org.bukkit.event.inventory.InventoryType type);
+
+    org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, org.bukkit.event.inventory.InventoryType type, String title);
+
+    default org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, org.bukkit.event.inventory.InventoryType type,
+                                                           net.kyori.adventure.text.Component title) {
+        return createInventory(owner, type, title == null ? null : title.toLegacy());
+    }
+
+    org.bukkit.boss.BossBar createBossBar(String title, org.bukkit.boss.BarColor color, org.bukkit.boss.BarStyle style, org.bukkit.boss.BarFlag... flags);
+
+    org.bukkit.scoreboard.ScoreboardManager getScoreboardManager();
+
+    default org.bukkit.inventory.ItemFactory getItemFactory() { return org.bukkit.inventory.ItemFactory.INSTANCE; }
 }

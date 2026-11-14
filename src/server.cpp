@@ -213,7 +213,8 @@ void Server::addPlayer(std::unique_ptr<Player> owned) {
             player->send("player_info_update", t.out);
         }
         for (auto& [n, pl] : p->spawnPackets(*player->version)) player->send(n, pl);
-        for (auto& [n, pl] : player->spawnPackets(*p->version)) p->send(n, pl);
+        if (p->canSee(player))
+            for (auto& [n, pl] : player->spawnPackets(*p->version)) p->send(n, pl);
     }
     player->send("entity_metadata", player->metadata(*player->version));
     for (Entity* e : entities())

@@ -52,8 +52,73 @@ public class ItemStack implements Cloneable {
     }
 
     public boolean isSimilar(ItemStack o) {
-        return o != null && o.type == type && java.util.Objects.equals(o.getItemMeta().getDisplayName(), getItemMeta().getDisplayName());
+        return o != null && o.type == type && o.getItemMeta().equals(getItemMeta());
     }
+
+    // ---- Verzauberungen ----
+
+    public void addEnchantment(org.bukkit.enchantments.Enchantment e, int level) {
+        if (level < 1 || level > e.getMaxLevel()) throw new IllegalArgumentException("Stufe " + level + " ist für " + e.getKey() + " nicht erlaubt");
+        addUnsafeEnchantment(e, level);
+    }
+
+    public void addUnsafeEnchantment(org.bukkit.enchantments.Enchantment e, int level) {
+        ItemMeta m = getItemMeta();
+        m.addEnchant(e, level, true);
+        setItemMeta(m);
+    }
+
+    public void addEnchantments(Map<org.bukkit.enchantments.Enchantment, Integer> map) { map.forEach(this::addEnchantment); }
+
+    public void addUnsafeEnchantments(Map<org.bukkit.enchantments.Enchantment, Integer> map) { map.forEach(this::addUnsafeEnchantment); }
+
+    public int removeEnchantment(org.bukkit.enchantments.Enchantment e) {
+        ItemMeta m = getItemMeta();
+        int old = m.getEnchantLevel(e);
+        m.removeEnchant(e);
+        setItemMeta(m);
+        return old;
+    }
+
+    public boolean containsEnchantment(org.bukkit.enchantments.Enchantment e) { return getItemMeta().hasEnchant(e); }
+
+    public int getEnchantmentLevel(org.bukkit.enchantments.Enchantment e) { return getItemMeta().getEnchantLevel(e); }
+
+    public Map<org.bukkit.enchantments.Enchantment, Integer> getEnchantments() { return getItemMeta().getEnchants(); }
+
+    public ItemStack add(int n) {
+        amount += n;
+        return this;
+    }
+
+    public ItemStack subtract(int n) {
+        amount -= n;
+        return this;
+    }
+
+    public ItemStack asQuantity(int n) {
+        ItemStack c = clone();
+        c.amount = n;
+        return c;
+    }
+
+    public ItemStack asOne() { return asQuantity(1); }
+
+    public net.kyori.adventure.text.Component displayName() {
+        ItemMeta m = getItemMeta();
+        return m.hasDisplayName() ? m.displayName() : net.kyori.adventure.text.Component.text(type.name().toLowerCase().replace('_', ' '));
+    }
+
+    /** Paper: Meta direkt bearbeiten, z.B. stack.editMeta(m -&gt; m.setDisplayName("x")). */
+    public boolean editMeta(java.util.function.Consumer<? super ItemMeta> edit) {
+        ItemMeta m = getItemMeta();
+        edit.accept(m);
+        return setItemMeta(m);
+    }
+
+    public void lore(List<? extends net.kyori.adventure.text.Component> lore) { editMeta(m -> m.lore(lore)); }
+
+    public List<net.kyori.adventure.text.Component> lore() { return getItemMeta().lore(); }
 
     @Override
     public ItemStack clone() { return new ItemStack(this); }
@@ -72,12 +137,26 @@ public class ItemStack implements Cloneable {
     public String toCreeItem() {
         String base = type.getKey().asString();
         if (meta == null) return base;
-        Map<String, Object> m = new LinkedHashMap<>();
-        if (meta instanceof ItemMeta.Impl impl && impl.raw != null) m.putAll(impl.raw);   // Verzauberungen usw. behalten
-        m.remove("name");
-        m.remove("lore");
+        // Schlüssel sortiert (TreeMap) wie im Server, damit gleiche Items stapeln
+        Map<String, Object> m = new java.util.TreeMap<>();
+        if (meta instanceof ItemMeta.Impl impl && impl.raw != null) m.putAll(impl.raw);   // Unbekanntes (z.B. repair) behalten
+        for (String k : List.of("name", "lore", "ench", "stored", "unbreakable", "model", "glint", "flags")) m.remove(k);
         if (meta.hasDisplayName()) m.put("name", meta.getDisplayName());
         if (meta.hasLore()) m.put("lore", meta.getLore());
+        if (meta.hasEnchants()) {
+            Map<String, Object> e = new java.util.TreeMap<>();
+            meta.getEnchants().forEach((en, lvl) -> e.put(en.getKey().asString(), lvl));
+            m.put(type == Material.ENCHANTED_BOOK ? "stored" : "ench", e);
+        }
+        if (meta.isUnbreakable()) m.put("unbreakable", true);
+        if (meta.hasCustomModelData()) m.put("model", meta.getCustomModelData());
+        if (meta.hasEnchantmentGlintOverride()) m.put("glint", meta.getEnchantmentGlintOverride());
+        if (!meta.getItemFlags().isEmpty()) {
+            List<String> f = new ArrayList<>();
+            for (org.bukkit.inventory.ItemFlag fl : meta.getItemFlags()) f.add(fl.name());
+            java.util.Collections.sort(f);
+            m.put("flags", f);
+        }
         return m.isEmpty() ? base : base + "@" + creemc.bridge.Json.write(m);
     }
 
@@ -95,6 +174,21 @@ public class ItemStack implements Cloneable {
                 for (Object o : l) lore.add(String.valueOf(o));
                 meta.setLore(lore);
             }
+            Object en = m.get("ench") != null ? m.get("ench") : m.get("stored");
+            if (en instanceof Map<?, ?> em)
+                em.forEach((k, v) -> {
+                    org.bukkit.enchantments.Enchantment e = org.bukkit.enchantments.Enchantment.getByKey(org.bukkit.NamespacedKey.fromString(String.valueOf(k)));
+                    if (e != null) meta.addEnchant(e, (int) creemc.bridge.Json.num(v, 1), true);
+                });
+            if (Boolean.TRUE.equals(m.get("unbreakable"))) meta.setUnbreakable(true);
+            if (m.get("model") instanceof Number n) meta.setCustomModelData(n.intValue());
+            if (m.get("glint") instanceof Boolean g) meta.setEnchantmentGlintOverride(g);
+            if (m.get("flags") instanceof List<?> fl)
+                for (Object o : fl)
+                    try {
+                        meta.addItemFlags(org.bukkit.inventory.ItemFlag.valueOf(String.valueOf(o)));
+                    } catch (IllegalArgumentException ignored) {
+                    }
             ((ItemMeta.Impl) meta).raw = m;
             s.meta = meta;
         }

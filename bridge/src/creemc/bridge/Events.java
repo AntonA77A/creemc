@@ -79,6 +79,20 @@ public final class Events {
         FORWARD.put(PlayerRespawnEvent.class, List.of("player_respawn"));
         FORWARD.put(AsyncPlayerPreLoginEvent.class, List.of("player_pre_login"));
         FORWARD.put(ServerListPingEvent.class, List.of("server_list_ping"));
+        // erweiterte API
+        FORWARD.put(org.bukkit.event.inventory.InventoryClickEvent.class, List.of("inventory_click"));
+        FORWARD.put(org.bukkit.event.inventory.InventoryOpenEvent.class, List.of("inventory_open"));
+        FORWARD.put(org.bukkit.event.inventory.InventoryCloseEvent.class, List.of("inventory_close"));
+        FORWARD.put(org.bukkit.event.player.PlayerDropItemEvent.class, List.of("player_drop_item"));
+        FORWARD.put(org.bukkit.event.entity.EntityPickupItemEvent.class, List.of("player_pickup_item"));
+        FORWARD.put(org.bukkit.event.player.PlayerItemConsumeEvent.class, List.of("player_item_consume"));
+        FORWARD.put(org.bukkit.event.entity.FoodLevelChangeEvent.class, List.of("food_level_change"));
+        FORWARD.put(org.bukkit.event.player.PlayerItemHeldEvent.class, List.of("player_item_held"));
+        FORWARD.put(org.bukkit.event.player.PlayerSwapHandItemsEvent.class, List.of("player_swap_hand_items"));
+        FORWARD.put(org.bukkit.event.player.PlayerToggleFlightEvent.class, List.of("player_toggle_flight"));
+        FORWARD.put(org.bukkit.event.player.PlayerKickEvent.class, List.of("player_kick"));
+        FORWARD.put(org.bukkit.event.entity.EntityExplodeEvent.class, List.of("entity_explode"));
+        FORWARD.put(org.bukkit.event.entity.CreatureSpawnEvent.class, List.of("creature_spawn"));
     }
 
     private record Handler(Plugin plugin, Listener listener, Class<? extends Event> type, EventPriority priority,
@@ -138,17 +152,25 @@ public final class Events {
 
     private void changed() {
         if (!bridge.commands.announced) return;   // vor "ready" wird alles auf einmal gemeldet
-        Set<String> now = new HashSet<>(forwardedNames());
-        if (!now.equals(lastForwarded)) bridge.call("listen", "events", new ArrayList<>(now));
+        Set<String> now = new HashSet<>(names());
+        if (!now.equals(lastForwarded)) {   // später angemeldete Handler (z.B. GUIs) dem Server melden
+            lastForwarded = now;
+            bridge.call("listen", "events", new ArrayList<>(now));
+        }
     }
 
     /** CreeMC-Eventnamen, für die es Java-Handler gibt. */
     public synchronized List<String> forwardedNames() {
-        Set<String> out = new LinkedHashSet<>(List.of("player_join", "player_quit"));
+        List<String> out = names();
+        lastForwarded = new HashSet<>(out);
+        return out;
+    }
+
+    private synchronized List<String> names() {
+        Set<String> out = new LinkedHashSet<>(List.of("player_join", "player_quit", "inventory_close"));
         for (Handler h : handlers)
             for (Map.Entry<Class<? extends Event>, List<String>> e : FORWARD.entrySet())
                 if (h.type.isAssignableFrom(e.getKey()) || e.getKey().isAssignableFrom(h.type)) out.addAll(e.getValue());
-        lastForwarded = new HashSet<>(out);
         return new ArrayList<>(out);
     }
 
@@ -231,6 +253,39 @@ public final class Events {
         return out;
     }
 
+    private ItemStack stack(Object o) {
+        List<Object> st = Json.list(o);
+        return st.size() >= 2 ? ItemStack.fromCree(Json.str(st.get(0), null), (int) Json.num(st.get(1), 1)) : null;
+    }
+
+    private static org.bukkit.event.inventory.InventoryAction action(int mode, int button) {
+        return switch (mode) {
+            case 0 -> button == 0 ? org.bukkit.event.inventory.InventoryAction.PICKUP_ALL : org.bukkit.event.inventory.InventoryAction.PICKUP_HALF;
+            case 1 -> org.bukkit.event.inventory.InventoryAction.MOVE_TO_OTHER_INVENTORY;
+            case 2 -> org.bukkit.event.inventory.InventoryAction.HOTBAR_SWAP;
+            case 3 -> org.bukkit.event.inventory.InventoryAction.CLONE_STACK;
+            case 4 -> button == 0 ? org.bukkit.event.inventory.InventoryAction.DROP_ONE_SLOT : org.bukkit.event.inventory.InventoryAction.DROP_ALL_SLOT;
+            case 6 -> org.bukkit.event.inventory.InventoryAction.COLLECT_TO_CURSOR;
+            default -> org.bukkit.event.inventory.InventoryAction.UNKNOWN;
+        };
+    }
+
+    /** Fenster aus Server-Daten: eigenes GUI-Inventar oder eine Momentaufnahme (Kiste, Ofen ...). */
+    private org.bukkit.inventory.InventoryView viewFor(PlayerImpl p, Map<String, Object> d) {
+        GuiInventory g = GuiInventory.byId((int) Json.num(d.get("gui"), -1));
+        if (g == null) {
+            var type = org.bukkit.event.inventory.InventoryType.fromCree(Json.str(d.get("type"), "chest"));
+            int size = (int) Json.num(d.get("size"), type.getDefaultSize());
+            g = new GuiInventory(null, Math.max(1, size), Json.str(d.get("title"), type.getDefaultTitle()), type, false);
+            List<Object> items = Json.list(d.get("items"));
+            for (int i = 0; i < Math.min(items.size(), g.getSize()); i++) {
+                ItemStack st = stack(items.get(i));
+                if (st != null) g.setItem(i, st);   // id = -1: wird nicht an den Server geschickt
+            }
+        }
+        return p.view(g);
+    }
+
     Map<String, Object> fromServer(String name, Map<String, Object> d) {
         ServerImpl s = bridge.server;
         Map<String, Object> r = new LinkedHashMap<>();
@@ -238,6 +293,7 @@ public final class Events {
         switch (name) {
             case "player_join" -> {
                 PlayerJoinEvent e = new PlayerJoinEvent(p, Json.str(d.get("join_message"), null));
+                s.scoreboards().joined(p);   // Hauptscoreboard zeigen
                 call(e);
                 r.put("join_message", e.getJoinMessage());
             }
@@ -245,6 +301,8 @@ public final class Events {
                 PlayerQuitEvent e = new PlayerQuitEvent(p, Json.str(d.get("quit_message"), null));
                 call(e);
                 r.put("quit_message", e.getQuitMessage());
+                s.scoreboards().quit(p);
+                if (p != null) p.guiClosed();
                 s.removePlayer(p);
             }
             case "player_chat" -> {
@@ -372,6 +430,90 @@ public final class Events {
                 call(e);
                 r.put("motd", e.getMotd());
                 r.put("max_players", e.getMaxPlayers());
+            }
+            // ---- erweiterte API ----
+            case "inventory_click" -> {
+                var view = viewFor(p, d);
+                int raw = (int) Json.num(d.get("slot"), -1);
+                int mode = (int) Json.num(d.get("mode"), 0), button = (int) Json.num(d.get("button"), 0);
+                var click = org.bukkit.event.inventory.ClickType.fromVanilla(mode, button, raw);
+                var slotType = raw < 0 ? org.bukkit.event.inventory.InventoryType.SlotType.OUTSIDE
+                        : raw < view.getTopInventory().getSize() ? org.bukkit.event.inventory.InventoryType.SlotType.CONTAINER
+                        : raw >= view.getTopInventory().getSize() + 27 ? org.bukkit.event.inventory.InventoryType.SlotType.QUICKBAR
+                        : org.bukkit.event.inventory.InventoryType.SlotType.CONTAINER;
+                var e = new org.bukkit.event.inventory.InventoryClickEvent(view, slotType, raw, click, action(mode, button), mode == 2 ? button : -1);
+                e.setCreeItems(stack(d.get("item")), stack(d.get("cursor")));
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "inventory_update" -> {
+                GuiInventory g = GuiInventory.byId((int) Json.num(d.get("gui"), -1));
+                if (g != null) g.updateFromServer(Json.list(d.get("items")));
+            }
+            case "inventory_open" -> {
+                var e = new org.bukkit.event.inventory.InventoryOpenEvent(viewFor(p, d));
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "inventory_close" -> {
+                var e = new org.bukkit.event.inventory.InventoryCloseEvent(viewFor(p, d));
+                if (p != null) p.guiClosed();
+                call(e);
+            }
+            case "player_drop_item" -> {
+                ItemStack st = ItemStack.fromCree(Json.str(d.get("item"), null), (int) Json.num(d.get("count"), 1));
+                var e = new org.bukkit.event.player.PlayerDropItemEvent(p, new ItemImpl(bridge, st, p.getLocation()));
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "player_pickup_item" -> {
+                ItemStack st = stack(d.get("item"));
+                var e = new org.bukkit.event.entity.EntityPickupItemEvent(p, new ItemImpl(bridge, st, p.getLocation()), 0);
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "player_item_consume" -> {
+                var e = new org.bukkit.event.player.PlayerItemConsumeEvent(p, ItemStack.fromCree(Json.str(d.get("item"), null), 1));
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "food_level_change" -> {
+                var e = new org.bukkit.event.entity.FoodLevelChangeEvent(p, (int) Json.num(d.get("food"), 20));
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "player_item_held" -> {
+                var e = new org.bukkit.event.player.PlayerItemHeldEvent(p, (int) Json.num(d.get("previous"), 0), (int) Json.num(d.get("new"), 0));
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "player_swap_hand_items" -> {
+                var e = new org.bukkit.event.player.PlayerSwapHandItemsEvent(p, p.getInventory().getItemInOffHand(), p.getInventory().getItemInMainHand());
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "player_toggle_flight" -> {
+                var e = new org.bukkit.event.player.PlayerToggleFlightEvent(p, Boolean.TRUE.equals(d.get("flying")));
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "player_kick" -> {
+                var e = new org.bukkit.event.player.PlayerKickEvent(p, Json.str(d.get("reason"), ""), null);
+                call(e);
+                r.put("cancelled", e.isCancelled());
+                r.put("reason", e.getReason());
+            }
+            case "entity_explode" -> {
+                Entity ent = s.entity(Json.obj(d.get("entity")));
+                var e = new org.bukkit.event.entity.EntityExplodeEvent(ent, ent.getLocation(), new ArrayList<>(), 1f);
+                call(e);
+                r.put("cancelled", e.isCancelled());
+            }
+            case "creature_spawn" -> {
+                Entity ent = s.entity(Json.obj(d.get("entity")));
+                var e = new org.bukkit.event.entity.CreatureSpawnEvent(ent, org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.NATURAL);
+                call(e);
+                r.put("cancelled", e.isCancelled());
             }
             default -> {
             }

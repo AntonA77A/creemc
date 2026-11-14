@@ -100,4 +100,74 @@ public interface Player extends HumanEntity, OfflinePlayer {
     default boolean isConnected() { return isOnline(); }
 
     String getClientBrandName();
+
+    // ---- Inventare ----
+    org.bukkit.inventory.InventoryView openInventory(org.bukkit.inventory.Inventory inventory);
+
+    org.bukkit.inventory.InventoryView getOpenInventory();
+
+    // ---- Scoreboard ----
+    org.bukkit.scoreboard.Scoreboard getScoreboard();
+
+    void setScoreboard(org.bukkit.scoreboard.Scoreboard scoreboard);
+
+    // ---- Sichtbarkeit ----
+    void hidePlayer(org.bukkit.plugin.Plugin plugin, Player player);
+
+    void showPlayer(org.bukkit.plugin.Plugin plugin, Player player);
+
+    @Deprecated
+    default void hidePlayer(Player player) { hidePlayer(null, player); }
+
+    @Deprecated
+    default void showPlayer(Player player) { showPlayer(null, player); }
+
+    boolean canSee(Player player);
+
+    // ---- Geschwindigkeit (Bukkit-Werte: Fliegen 0.1, Laufen 0.2) ----
+    float getFlySpeed();
+
+    void setFlySpeed(float value);
+
+    float getWalkSpeed();
+
+    void setWalkSpeed(float value);
+
+    // ---- Partikel (nur für diesen Spieler) ----
+    <T> void spawnParticle(org.bukkit.Particle particle, double x, double y, double z, int count, double offsetX, double offsetY,
+                           double offsetZ, double extra, T data);
+
+    default void spawnParticle(org.bukkit.Particle particle, org.bukkit.Location l, int count) {
+        spawnParticle(particle, l.getX(), l.getY(), l.getZ(), count, 0, 0, 0, 0, null);
+    }
+
+    default void spawnParticle(org.bukkit.Particle particle, double x, double y, double z, int count) {
+        spawnParticle(particle, x, y, z, count, 0, 0, 0, 0, null);
+    }
+
+    default <T> void spawnParticle(org.bukkit.Particle particle, org.bukkit.Location l, int count, T data) {
+        spawnParticle(particle, l.getX(), l.getY(), l.getZ(), count, 0, 0, 0, 0, data);
+    }
+
+    default void spawnParticle(org.bukkit.Particle particle, org.bukkit.Location l, int count, double ox, double oy, double oz) {
+        spawnParticle(particle, l.getX(), l.getY(), l.getZ(), count, ox, oy, oz, 0, null);
+    }
+
+    default void spawnParticle(org.bukkit.Particle particle, org.bukkit.Location l, int count, double ox, double oy, double oz, double extra) {
+        spawnParticle(particle, l.getX(), l.getY(), l.getZ(), count, ox, oy, oz, extra, null);
+    }
+
+    default <T> void spawnParticle(org.bukkit.Particle particle, org.bukkit.Location l, int count, double ox, double oy, double oz, T data) {
+        spawnParticle(particle, l.getX(), l.getY(), l.getZ(), count, ox, oy, oz, 0, data);
+    }
+
+    default <T> void spawnParticle(org.bukkit.Particle particle, org.bukkit.Location l, int count, double ox, double oy, double oz,
+                                   double extra, T data) {
+        spawnParticle(particle, l.getX(), l.getY(), l.getZ(), count, ox, oy, oz, extra, data);
+    }
+
+    // ---- Adventure-Bossbars ----
+    void showBossBar(net.kyori.adventure.bossbar.BossBar bar);
+
+    void hideBossBar(net.kyori.adventure.bossbar.BossBar bar);
 }

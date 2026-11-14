@@ -1,0 +1,23 @@
+package org.bukkit.event.inventory;
+
+import org.bukkit.entity.HumanEntity;
+import org.bukkit.event.Cancellable;
+import org.bukkit.event.HandlerList;
+import org.bukkit.inventory.InventoryView;
+
+public class InventoryOpenEvent extends InventoryEvent implements Cancellable {
+    private static final HandlerList HANDLERS = new HandlerList();
+    private boolean cancelled;
+
+    public InventoryOpenEvent(InventoryView view) { super(view); }
+
+    public HumanEntity getPlayer() { return transaction.getPlayer(); }
+
+    @Override public boolean isCancelled() { return cancelled; }
+
+    @Override public void setCancelled(boolean cancel) { cancelled = cancel; }
+
+    @Override public HandlerList getHandlers() { return HANDLERS; }
+
+    public static HandlerList getHandlerList() { return HANDLERS; }
+}

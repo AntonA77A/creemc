@@ -292,4 +292,63 @@ public final class ServerImpl implements Server {
         for (int i = 0; i + 1 < kv.length; i += 2) m.put((String) kv[i], kv[i + 1]);
         return m;
     }
+    // ---- Inventare, Bossbars, Scoreboards (erweiterte API) ----
+
+    private Scoreboards scoreboards;
+
+    public synchronized Scoreboards scoreboards() {
+        if (scoreboards == null) scoreboards = new Scoreboards(bridge);
+        return scoreboards;
+    }
+
+    @Override public org.bukkit.scoreboard.ScoreboardManager getScoreboardManager() { return scoreboards(); }
+
+    @Override
+    public org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, int size) {
+        return createInventory(owner, size, (String) null);
+    }
+
+    @Override
+    public org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, int size, String title) {
+        return new GuiInventory(owner, size, title, org.bukkit.event.inventory.InventoryType.CHEST, true);
+    }
+
+    @Override
+    public org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, org.bukkit.event.inventory.InventoryType type) {
+        return createInventory(owner, type, (String) null);
+    }
+
+    @Override
+    public org.bukkit.inventory.Inventory createInventory(org.bukkit.inventory.InventoryHolder owner, org.bukkit.event.inventory.InventoryType type,
+                                                          String title) {
+        // CreeMC kann als eigenes Fenster: Kiste (9-54), Trichter, Spender/Werfer - alles andere wird eine Kiste
+        org.bukkit.event.inventory.InventoryType t = type.isCreatable() || type == org.bukkit.event.inventory.InventoryType.ENDER_CHEST
+                || type == org.bukkit.event.inventory.InventoryType.BARREL || type == org.bukkit.event.inventory.InventoryType.SHULKER_BOX
+                ? type : org.bukkit.event.inventory.InventoryType.CHEST;
+        int size = t == org.bukkit.event.inventory.InventoryType.HOPPER ? 5
+                : t == org.bukkit.event.inventory.InventoryType.DISPENSER || t == org.bukkit.event.inventory.InventoryType.DROPPER ? 9 : 27;
+        return new GuiInventory(owner, size, title == null ? type.getDefaultTitle() : title,
+                t == org.bukkit.event.inventory.InventoryType.HOPPER || t == org.bukkit.event.inventory.InventoryType.DISPENSER
+                        || t == org.bukkit.event.inventory.InventoryType.DROPPER ? t : org.bukkit.event.inventory.InventoryType.CHEST, true);
+    }
+
+    @Override
+    public org.bukkit.boss.BossBar createBossBar(String title, org.bukkit.boss.BarColor color, org.bukkit.boss.BarStyle style,
+                                                 org.bukkit.boss.BarFlag... flags) {
+        return new BossBars.Impl(title, color, style, flags);
+    }
+
+    static {
+        // Adventure-Bossbars: Änderungen an alle Zuschauer schicken
+        net.kyori.adventure.bossbar.BossBar.creeSender(a -> {
+            var bar = (net.kyori.adventure.bossbar.BossBar) a[0];
+            var p = org.bukkit.Bukkit.getPlayer((java.util.UUID) a[1]);
+            if (p != null) advBar(p, bar, (int) a[2]);
+        });
+    }
+
+    static void advBar(org.bukkit.entity.Player p, net.kyori.adventure.bossbar.BossBar bar, int action) {
+        BossBars.send(p, bar.creeId(), action, bar.name() == null ? "" : bar.name().toLegacy(), bar.progress(), bar.color().ordinal(),
+                bar.overlay().ordinal(), bar.creeFlags());
+    }
 }

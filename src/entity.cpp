@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "buffer.hpp"
+#include "api.hpp"
 #include "data.hpp"
 #include "player.hpp"
 #include "server.hpp"
@@ -197,6 +198,10 @@ void ItemEntity::tick() {
     for (Player* p : server.players()) {
         if (p->dead || p->gamemode == 3) continue;
         if (std::abs(p->x - x) < 1.5 && std::abs(p->z - z) < 1.5 && y - p->y > -0.5 && y - p->y < 2.3) {
+            json::Object pd;
+            pd["item"] = json::Array{item, count};
+            pd["entity"] = entityId;
+            if (api::fire(server, "player_pickup_item", p, std::move(pd))) continue;
             int left = p->addItem(item, count);
             int taken = count - left;
             if (taken <= 0) continue;
@@ -253,6 +258,18 @@ void Mob::lookAt(double tx, double tz) { yaw = float(std::atan2(-(tx - x), tz - 
 
 bool Mob::damage(float amount, int attacker, const std::string& cause) {
     if (dead || amount <= 0 || (hurtCooldown > 0 && amount <= lastDamage)) return false;
+    if (server.bridge().listens("entity_damage")) {   // Plugins: EntityDamage(ByEntity)Event
+        json::Object d;
+        d["entity"] = api::entitySnap(this);
+        d["amount"] = double(amount);
+        d["cause"] = cause;
+        if (Player* a = server.playerById(attacker)) d["attacker"] = server.bridge().snap(a);
+        else if (Entity* e = attacker ? server.getEntity(attacker) : nullptr) d["attacker"] = api::entitySnap(e);
+        json::Value r = server.bridge().event("entity_damage", std::move(d));
+        if (r["cancelled"].asBool()) return false;
+        if (r["amount"].isNumber()) amount = float(r["amount"].asDouble());
+        if (amount <= 0) return false;
+    }
     // während der Unverwundbarkeit zählt nur der Teil über dem letzten Treffer (wie Vanilla)
     health -= hurtCooldown > 0 ? amount - lastDamage : amount;
     if (hurtCooldown <= 0) hurtCooldown = 10;

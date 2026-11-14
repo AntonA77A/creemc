@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <map>
 
+#include "api.hpp"
 #include "blocks.hpp"
 #include "buffer.hpp"
 #include "connection.hpp"
@@ -177,6 +178,7 @@ void Player::syncInventory() {
 }
 
 void Player::openWindow(std::unique_ptr<Window> w) {
+    if (api::inventoryOpen(*this, *w)) return;   // von einem Plugin verhindert
     closeWindow(false);
     window = std::move(w);
     Writer p;
@@ -193,7 +195,10 @@ void Player::sendWindowProperty(int prop, int value) {
 
 void Player::closeWindow(bool notifyClient) {
     for (const auto& st : window->returnItems()) dropStack(st.first, st.second);
-    if (window->id != 0) blocks::onClose(*this, *window);
+    if (window->id != 0) {
+        blocks::onClose(*this, *window);
+        api::inventoryClose(*this, *window);
+    }
     if (window->id != 0) {
         if (notifyClient) {
             Writer w;
@@ -208,13 +213,29 @@ void Player::closeWindow(bool notifyClient) {
 void Player::dropStack(const std::string& item, int count) {
     // Wurf in Blickrichtung (wie Vanilla)
     if (item.empty() || count <= 0) return;
+    json::Object dd;
+    dd["item"] = item;
+    dd["count"] = count;
+    if (api::fire(server, "player_drop_item", this, std::move(dd))) {   // abgebrochen: zurück ins Inventar
+        addItem(item, count);
+        return;
+    }
     double ry = yaw * 3.14159265358979 / 180.0, rp = pitch * 3.14159265358979 / 180.0;
     double vx = -std::sin(ry) * std::cos(rp) * 0.3, vz = std::cos(ry) * std::cos(rp) * 0.3;
     double vy = -std::sin(rp) * 0.3 + 0.1;
     server.dropItemVelocity(x, y + 1.32, z, item, count, 40, vx, vy, vz);
 }
 
-void Player::kick(const std::string& reason) {
+void Player::kick(const std::string& rawReason) {
+    std::string reason = rawReason;
+    if (server.bridge().listens("player_kick")) {   // Plugins dürfen den Kick verhindern oder den Grund ändern
+        json::Object d;
+        d["player"] = server.bridge().snap(this);
+        d["reason"] = reason;
+        json::Value r = server.bridge().event("player_kick", std::move(d));
+        if (r["cancelled"].asBool()) return;
+        if (r["reason"].isString()) reason = r["reason"].asString();
+    }
     logx::info(name + " wurde gekickt: " + text::stripColors(reason));
     conn->kick(reason);
 }
@@ -306,8 +327,14 @@ void Player::addExhaustion(float amount) {
     exhaustion += amount;
     while (exhaustion >= 4.0f) {
         exhaustion -= 4.0f;
-        if (saturation > 0) saturation = std::max(0.0f, saturation - 1);
-        else food = std::max(0, food - 1);
+        if (saturation > 0) {
+            saturation = std::max(0.0f, saturation - 1);
+        } else if (food > 0) {
+            json::Object d;
+            d["food"] = food - 1;
+            if (api::fire(server, "food_level_change", this, std::move(d))) continue;   // von einem Plugin verhindert
+            food = food - 1;
+        }
         sendHealth();
     }
 }
@@ -394,6 +421,10 @@ bool Player::damage(float amount, const std::string& cause, int attacker) {
         d["player"] = server.bridge().snap(this);
         d["amount"] = double(amount);
         d["cause"] = cause;
+        if (attacker) {   // Angreifer (Spieler oder Mob) für EntityDamageByEntityEvent
+            if (Player* a = server.playerById(attacker)) d["attacker"] = server.bridge().snap(a);
+            else if (Entity* e = server.getEntity(attacker)) d["attacker"] = api::entitySnap(e);
+        }
         json::Value r = server.bridge().event("player_damage", std::move(d));
         if (r["cancelled"].asBool()) return false;
         if (r["amount"].isNumber()) amount = float(r["amount"].asDouble());
@@ -432,19 +463,27 @@ void Player::die(const std::string& rawMessage) {
     closeWindow();
     std::string message = rawMessage;
     bool keep = server.gameRules().b("keepInventory");
+    std::vector<Stack> drops;
+    for (const auto& [s, st] : inventory)
+        if (s != 0) drops.push_back(st);
     if (server.bridge().listens("player_death")) {
         json::Object d;
         d["player"] = server.bridge().snap(this);
         d["message"] = message;
         d["keep_inventory"] = keep;
+        json::Array da;
+        for (const auto& st : drops) da.push_back(json::Array{st.first, st.second});
+        d["drops"] = json::Value(std::move(da));
         json::Value r = server.bridge().event("player_death", std::move(d));
         if (r["message"].isString()) message = r["message"].asString();
         if (r["keep_inventory"].isBool()) keep = r["keep_inventory"].asBool();
+        if (r["drops"].isArray()) {   // Plugins dürfen die Drops ändern
+            drops.clear();
+            for (const auto& v : r["drops"].asArray())
+                if (v.isArray() && v.size() >= 2 && v[0].isString()) drops.push_back({v[0].asString(), int(v[1].asInt(1))});
+        }
     }
     if (!keep) {
-        std::vector<Stack> drops;
-        for (const auto& [s, st] : inventory)
-            if (s != 0) drops.push_back(st);
         inventory.clear();
         syncInventory();
         int dropXp = std::min(100, level() * 7);   // Vanilla: 7 Punkte pro Stufe, höchstens 100
@@ -473,6 +512,17 @@ void Player::respawn() {
     if (!dead) return;
     double sx, sy, sz;
     server.world().spawnPoint(sx, sy, sz);
+    if (server.bridge().listens("player_respawn")) {   // Plugins dürfen den Respawn-Ort ändern
+        json::Object d;
+        d["player"] = server.bridge().snap(this);
+        d["location"] = json::Array{sx, sy, sz, double(yaw), double(pitch)};
+        json::Value r = server.bridge().event("player_respawn", std::move(d));
+        if (r["location"].isArray() && r["location"].size() >= 3) {
+            sx = r["location"][0].asDouble(sx);
+            sy = r["location"][1].asDouble(sy);
+            sz = r["location"][2].asDouble(sz);
+        }
+    }
     dead = false;
     health = 20;
     food = 20;
@@ -505,9 +555,10 @@ void Player::respawn() {
     server.broadcastPacket("remove_entities", rm.out, this);
     for (Player* p : server.players()) {
         if (p == this) continue;
-        if (!p->dead)
+        if (!p->dead && canSee(p))
             for (auto& [n, pl] : p->spawnPackets(*version)) send(n, pl);
-        for (auto& [n, pl] : spawnPackets(*p->version)) p->send(n, pl);
+        if (p->canSee(this))
+            for (auto& [n, pl] : spawnPackets(*p->version)) p->send(n, pl);
     }
     for (Entity* e : server.entities())
         for (auto& [n, pl] : e->spawnPackets(*version)) send(n, pl);
@@ -550,6 +601,11 @@ void Player::interactEntity(int target, bool attack, int hand) {
         addExhaustion(0.1f);
         vanilla::onAttack(*this, target);
     } else {
+        json::Object d;
+        if (Player* tp = server.playerById(target)) d["target"] = server.bridge().snap(tp);
+        else if (Entity* e = server.getEntity(target)) d["target"] = api::entitySnap(e);
+        d["hand"] = hand;
+        if (hand == 0 && api::fire(server, "player_interact_entity", this, std::move(d))) return;
         vanilla::onInteractEntity(*this, target, hand);
     }
 }
@@ -595,9 +651,10 @@ void Player::sendPermissionLevel() {
 
 void Player::sendAbilities() {
     int flags = ABILITY_FLAGS[gamemode & 3];
+    if (allowFlight) flags |= 0x04;
     if (flying && (flags & 0x04)) flags |= 0x02;
     Writer w;
-    w.i8(int8_t(flags)).f32(0.05f).f32(0.1f);
+    w.i8(int8_t(flags)).f32(flySpeed).f32(walkSpeed);
     send("abilities", w.out);
 }
 
@@ -834,7 +891,12 @@ void Player::handlePacket(int pid, const Bytes& payload) {
     } else if (n == "c_attack") {
         interactEntity(r.varint(), true, 0);
     } else if (n == "c_player_abilities") {
-        flying = (r.i8() & 0x02) && (gamemode == 1 || gamemode == 3);
+        bool want = r.i8() & 0x02;
+        bool canFly = gamemode == 1 || gamemode == 3 || allowFlight;
+        json::Object fd;
+        fd["flying"] = want && canFly;
+        if (canFly && want != flying && api::fire(server, "player_toggle_flight", this, std::move(fd))) sendAbilities();
+        else flying = want && canFly;
     } else if (n == "c_entity_action") {
         r.varint();
         int action = r.varint();
@@ -848,7 +910,14 @@ void Player::handlePacket(int pid, const Bytes& payload) {
         if (version->protocol >= V1_21_6) setSneaking(r.u8() & 0x20);
     } else if (n == "c_held_item") {
         int slot = r.i16();
-        if (slot >= 0 && slot <= 8) {
+        json::Object hd;
+        hd["previous"] = heldSlot;
+        hd["new"] = slot;
+        if (slot >= 0 && slot <= 8 && slot != heldSlot && api::fire(server, "player_item_held", this, std::move(hd))) {
+            Writer back;   // abgebrochen: alten Slot zurück
+            back.u8(uint8_t(heldSlot));
+            send("held_item", back.out);
+        } else if (slot >= 0 && slot <= 8) {
             heldSlot = slot;
             broadcastEquipment();
         }
@@ -870,8 +939,13 @@ void Player::handlePacket(int pid, const Bytes& payload) {
         int slot = r.i16();
         int button = r.i8();
         int mode = r.varint();
+        if (wid == window->id && !dead && api::inventoryClick(*this, slot, button, mode)) {
+            syncInventory();   // von einem Plugin abgebrochen: echten Zustand zurückschicken
+            return;
+        }
         if (wid == window->id && !dead) window->click(slot, button, mode);
         syncInventory();
+        api::afterInventoryClick(*this);
         if (auto* cw = dynamic_cast<blocks::ContainerWindow*>(window.get())) blocks::syncViewers(server, this, cw->positions);
     } else if (n == "c_enchant_item") {   // Knopf im Fenster (Zaubertisch: Option 0-2)
         int wid = r.varint();
@@ -1042,6 +1116,10 @@ void Player::onDig(Reader& r) {
         return;
     }
     if (status == 6) {   // Hände tauschen (F)
+        if (api::fire(server, "player_swap_hand_items", this)) {
+            syncInventory();
+            return;
+        }
         Stack main = inventory.count(36 + heldSlot) ? inventory[36 + heldSlot] : Stack{};
         Stack off = inventory.count(45) ? inventory[45] : Stack{};
         store(36 + heldSlot, off);

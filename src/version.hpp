@@ -39,7 +39,7 @@ public:
     std::unordered_map<std::string, int> ids;
     std::unordered_map<int, std::string> idNames;          // Play-Paket-ID -> logischer Name (nur c_*)
     int playerEntity = 0;
-    std::unordered_map<std::string, int> entities, metaTypes, blockEntities, components, items;
+    std::unordered_map<std::string, int> entities, metaTypes, blockEntities, components, items, particles;
     std::unordered_map<int, std::string> itemNames;
     std::unordered_map<std::string, int> blockIds;          // "minecraft:stone" -> Block-Registry-ID
     std::vector<int> remap;                                 // kanonischer Zustand -> Zustand dieser Version

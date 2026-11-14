@@ -91,6 +91,10 @@ Version::Version(int p) : protocol(p) {
         for (const auto& e : entries.asArray()) list.push_back(e.asString());
     }
     tags_ = d["tags"];
+    if (d["particles"].isArray()) {
+        int i = 0;
+        for (const auto& pn : d["particles"].asArray()) particles[pn.asString()] = i++;
+    }
 
     // Blöcke: Registry-IDs und Umrechnung kanonisch -> diese Version
     std::unordered_map<std::string, data::BlockRange> own;
@@ -370,6 +374,36 @@ std::vector<Bytes> Version::buildComponents(const json::Value& m) const {
         w.varint(comp(cname)).varint(int32_t(entries.size()));
         for (auto [i, l] : entries) w.varint(i).varint(l);
         if (protocol < V1_21_5) w.boolean(true);   // bis 1.21.4: im Tooltip zeigen
+        out.push_back(w.out);
+    }
+    if (m["lore"].isArray() && m["lore"].size() && comp("lore") >= 0) {
+        Writer w;
+        w.varint(comp("lore")).varint(int32_t(m["lore"].size()));
+        for (const auto& line : m["lore"].asArray()) {
+            json::Object c;   // wie Bukkit: ohne eigene Formatierung nicht kursiv
+            c["text"] = "";
+            c["italic"] = false;
+            c["extra"] = json::Array{text::component(line.str())};
+            w.raw(text::toNbt(json::Value(std::move(c))));
+        }
+        out.push_back(w.out);
+    }
+    if (m["unbreakable"].asBool() && comp("unbreakable") >= 0) {
+        Writer w;
+        w.varint(comp("unbreakable"));
+        if (protocol < V1_21_5) w.boolean(true);   // bis 1.21.4: im Tooltip zeigen
+        out.push_back(w.out);
+    }
+    if (m["model"].isNumber() && comp("custom_model_data") >= 0) {
+        Writer w;
+        w.varint(comp("custom_model_data"));
+        if (protocol < V1_21_4) w.varint(int32_t(m["model"].asInt()));
+        else w.varint(1).f32(float(m["model"].asDouble())).varint(0).varint(0).varint(0);   // floats, flags, strings, colors
+        out.push_back(w.out);
+    }
+    if (m["glint"].isBool() && comp("enchantment_glint_override") >= 0) {
+        Writer w;
+        w.varint(comp("enchantment_glint_override")).boolean(m["glint"].asBool());
         out.push_back(w.out);
     }
     if (m["repair"].asInt() && comp("repair_cost") >= 0) {

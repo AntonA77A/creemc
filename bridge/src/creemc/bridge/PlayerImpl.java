@@ -284,10 +284,15 @@ final class PlayerImpl extends EntityImpl implements Player {
     @Override
     public void setAllowFlight(boolean flight) {
         allowFlight = flight;
-        bridge.call("allow_flight", "to", me(), "value", flight);
+        if (!flight) flying = false;
+        bridge.call("flight", "to", me(), "allow", flight, "flying", flying);
     }
 
-    @Override public void setFlying(boolean value) { flying = value; }
+    @Override
+    public void setFlying(boolean value) {
+        flying = value && getAllowFlight();
+        bridge.call("flight", "to", me(), "flying", flying);
+    }
 
     @Override public String getClientBrandName() { return brand; }
 
@@ -296,4 +301,91 @@ final class PlayerImpl extends EntityImpl implements Player {
     @Override public int hashCode() { return uuid.hashCode(); }
 
     @Override public String toString() { return "CraftPlayer{name=" + name + "}"; }
+    // ---- erweiterte API ----
+
+    GuiInventory openGui;
+    float flySpeedB = 0.1f, walkSpeedB = 0.2f;
+    final java.util.Set<UUID> hidden = new java.util.HashSet<>();
+
+    @Override
+    public org.bukkit.inventory.InventoryView openInventory(org.bukkit.inventory.Inventory inv) {
+        if (!(inv instanceof GuiInventory g) || g.id < 0) {
+            Bridge.get().server.getLogger().warning("openInventory: nur Inventare aus Bukkit.createInventory können geöffnet werden");
+            return null;
+        }
+        if (openGui != null) openGui.viewers.remove(this);
+        openGui = g;
+        g.viewers.add(this);
+        bridge.call("gui_open", "to", me(), "id", g.id, "size", g.getSize(), "menu", g.menu(), "title", g.title, "items", g.creeItems());
+        return view(g);
+    }
+
+    org.bukkit.inventory.InventoryView view(org.bukkit.inventory.Inventory top) {
+        String title = top instanceof GuiInventory g ? g.title : "Crafting";
+        return new org.bukkit.inventory.InventoryView(top, getInventory(), this, title, top.getType());
+    }
+
+    @Override
+    public org.bukkit.inventory.InventoryView getOpenInventory() {
+        if (openGui != null) return view(openGui);
+        return view(new GuiInventory(null, 5, "Crafting", org.bukkit.event.inventory.InventoryType.CRAFTING, false));
+    }
+
+    /** Fenster wurde im Server geschlossen. */
+    void guiClosed() {
+        if (openGui != null) openGui.viewers.remove(this);
+        openGui = null;
+    }
+
+    @Override public org.bukkit.scoreboard.Scoreboard getScoreboard() { return bridge.server.scoreboards().of(this); }
+
+    @Override public void setScoreboard(org.bukkit.scoreboard.Scoreboard sb) { bridge.server.scoreboards().set(this, sb); }
+
+    @Override
+    public void hidePlayer(org.bukkit.plugin.Plugin plugin, Player player) {
+        if (player == null || player == this || !hidden.add(player.getUniqueId())) return;
+        bridge.call("hide_player", "to", me(), "target", player.getUniqueId().toString());
+    }
+
+    @Override
+    public void showPlayer(org.bukkit.plugin.Plugin plugin, Player player) {
+        if (player == null || !hidden.remove(player.getUniqueId())) return;
+        bridge.call("show_player", "to", me(), "target", player.getUniqueId().toString());
+    }
+
+    @Override public boolean canSee(Player player) { return player != null && !hidden.contains(player.getUniqueId()); }
+
+    @Override public float getFlySpeed() { return flySpeedB; }
+
+    @Override
+    public void setFlySpeed(float v) {
+        if (v < -1 || v > 1) throw new IllegalArgumentException("Geschwindigkeit muss zwischen -1 und 1 liegen");
+        flySpeedB = v;
+        bridge.call("speed", "to", me(), "fly", v);
+    }
+
+    @Override public float getWalkSpeed() { return walkSpeedB; }
+
+    @Override
+    public void setWalkSpeed(float v) {
+        if (v < -1 || v > 1) throw new IllegalArgumentException("Geschwindigkeit muss zwischen -1 und 1 liegen");
+        walkSpeedB = v;
+        bridge.call("speed", "to", me(), "walk", v);
+    }
+
+    @Override
+    public <T> void spawnParticle(org.bukkit.Particle particle, double x, double y, double z, int count, double ox, double oy, double oz,
+                                  double extra, T data) {
+        bridge.call("particle", WorldImpl.particleArgs(me(), particle, x, y, z, count, ox, oy, oz, extra, data, false));
+    }
+
+    @Override
+    public void showBossBar(net.kyori.adventure.bossbar.BossBar bar) {
+        if (bar.creeViewers().add(uuid)) ServerImpl.advBar(this, bar, 0);
+    }
+
+    @Override
+    public void hideBossBar(net.kyori.adventure.bossbar.BossBar bar) {
+        if (bar.creeViewers().remove(uuid)) ServerImpl.advBar(this, bar, 1);
+    }
 }
