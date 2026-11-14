@@ -11,7 +11,7 @@ struct Config {
     int gamemode = 0;
     int difficulty = 1;
     std::string worldName = "world";
-    std::string generator = "normal";
+    std::string generator = "realistic";
     long long seed = 12345;
     bool daylightCycle = true;
     std::string chatFormat = "&7{name}&8: &f{message}";

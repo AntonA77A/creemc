@@ -26,9 +26,10 @@ gamemode = 0
 # 0 = Friedlich, 1 = Einfach, 2 = Normal, 3 = Schwer
 difficulty = 1
 
-# Weltgenerator: "normal" (Hügel, Wasser, Bäume) oder "flat"
+# Weltgenerator für neue Welten: "realistic" (Biome, Berge, Ozeane, Flüsse, Höhlen, Erze),
+# "normal" (einfache Hügel) oder "flat". Eine bestehende Welt behält ihren Generator.
 world_name = "world"
-generator = "normal"
+generator = "realistic"
 seed = 12345
 
 # Tag/Nacht-Wechsel

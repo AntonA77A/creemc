@@ -1,6 +1,7 @@
 #include "world.hpp"
 
 #include <algorithm>
+#include <map>
 #include <cmath>
 #include <set>
 #include <tuple>
@@ -9,6 +10,7 @@
 #include "data.hpp"
 #include "nbt.hpp"
 #include "version.hpp"
+#include "worldgen.hpp"
 
 std::vector<uint8_t> FLUID_STATE;
 
@@ -318,16 +320,61 @@ void Chunk::set(int lx, int y, int lz, int state) {
 
 Bytes Chunk::payload(const Version& v) const {
     int p = v.protocol;
+    // Biome: gleich für alle Sektionen (je 4x4-Feld einer Spalte), als Palette im Format der Version
+    static std::map<int, std::vector<int>> biomeIdCache;
+    auto& ids = biomeIdCache[p];
+    if (ids.empty())
+        for (const auto& bn : worldgen::biomeNames()) {
+            int id = v.registryFind("minecraft:worldgen/biome", "minecraft:" + bn);
+            ids.push_back(id >= 0 ? id : v.plains);
+        }
+    std::vector<int> palette;
+    int cellIdx[16];
+    for (int i = 0; i < 16; ++i) {
+        int id = ids[biomes[size_t(i)] < ids.size() ? biomes[size_t(i)] : 0];
+        auto pos = std::find(palette.begin(), palette.end(), id);
+        if (pos == palette.end()) {
+            palette.push_back(id);
+            pos = palette.end() - 1;
+        }
+        cellIdx[i] = int(pos - palette.begin());
+    }
     Writer biome;
-    biome.u8(0).varint(v.plains);
-    if (p < V1_21_5) biome.varint(0);
+    int biomeLongs = 0;
+    if (palette.size() == 1) {
+        biome.u8(0).varint(palette[0]);
+        if (p < V1_21_5) biome.varint(0);
+    } else {
+        int total = v.registryCount("minecraft:worldgen/biome");
+        bool direct = palette.size() > 8;
+        int bits = direct ? std::max(1, int(std::ceil(std::log2(double(std::max(2, total)))))) : std::max(1, int(std::ceil(std::log2(double(palette.size())))));
+        int per = 64 / bits;
+        biomeLongs = (64 + per - 1) / per;
+        biome.u8(uint8_t(bits));
+        if (!direct) {
+            biome.varint(int32_t(palette.size()));
+            for (int id : palette) biome.varint(id);
+        }
+        if (p < V1_21_5) biome.varint(biomeLongs);
+        for (int l = 0; l < biomeLongs; ++l) {
+            uint64_t word = 0;
+            for (int j = 0; j < per; ++j) {
+                int i = l * per + j;   // Index: (y << 4) | (z << 2) | x, alle Höhen gleich
+                if (i >= 64) break;
+                int cell = i & 15;
+                uint64_t val = uint64_t(direct ? palette[size_t(cellIdx[cell])] : cellIdx[cell]);
+                word |= val << (bits * j);
+            }
+            biome.i64(int64_t(word));
+        }
+    }
     Bytes body;
     size_t padding = 0;
     for (const auto& s : sections) {
         auto [blocks, nLongs] = serializeSection(s.get(), v);
         body += blocks;
         body += biome.out;
-        if (p == V1_21_5) padding += varintBytes(nLongs).size() + 1;   // 1.21.5 erwartet noch Platz dafür
+        if (p == V1_21_5) padding += varintBytes(nLongs).size() + varintBytes(biomeLongs).size();   // 1.21.5 erwartet noch Platz dafür
     }
     body.append(padding, '\0');
 
@@ -365,9 +412,22 @@ Bytes Chunk::payload(const Version& v) const {
 World::World(const std::string& n, const std::string& f, const std::string& generator, int64_t s)
     : name(n), folder(f), generatorName(generator), seed(s) {
     initStatics();
-    if (generator == "flat") gen_ = std::make_unique<FlatGenerator>();
-    else if (generator == "normal") gen_ = std::make_unique<NormalGenerator>(s);
-    else throw std::runtime_error("Unbekannter Generator '" + generator + "' (verfügbar: flat, normal)");
+    // Eine bestehende Welt behält ihren Generator und Seed (sonst würde sich ihr Gelände ändern)
+    std::string txt;
+    if (readFile(joinPath(folder, "world.json"), txt)) {
+        try {
+            auto m = json::parse(txt);
+            if (m["generator"].isString()) generatorName = m["generator"].asString();
+            else if (readFile(joinPath(folder, "blocks.json"), txt) && generatorName == "realistic") generatorName = "normal";   // alte Welt
+            if (m["seed"].isNumber()) seed = m["seed"].asInt(seed);
+        } catch (...) {
+        }
+    }
+    if (generatorName != generator) logx::info("Welt '" + name + "' benutzt weiter den Generator '" + generatorName + "'");
+    if (generatorName == "flat") gen_ = std::make_unique<FlatGenerator>();
+    else if (generatorName == "normal") gen_ = std::make_unique<NormalGenerator>(seed);
+    else if (generatorName == "realistic") gen_ = worldgen::createRealistic(seed);
+    else throw std::runtime_error("Unbekannter Generator '" + generatorName + "' (verfügbar: realistic, normal, flat)");
     load();
 }
 
@@ -403,6 +463,7 @@ void World::save() {
     makeDirs(folder);
     json::Object meta;
     meta["seed"] = seed;
+    meta["generator"] = generatorName;
     meta["age"] = age;
     meta["time"] = time;
     meta["format"] = 2;
@@ -458,9 +519,25 @@ void World::setBlock(int x, int y, int z, int state) {
 int World::highestBlock(int x, int z) { return chunk(x >> 4, z >> 4).heights[size_t(((z & 15) << 4) | (x & 15))]; }
 
 void World::spawnPoint(double& x, double& y, double& z) {
-    x = 0.5;
-    y = highestBlock(0, 0) + 1.0;
-    z = 0.5;
+    if (!spawnFound_) {   // realistische Welt: Land in der Nähe von 0,0 suchen (Spirale)
+        spawnFound_ = true;
+        spawnX_ = 0;
+        spawnZ_ = 0;
+        int h;
+        bool found = false;
+        for (int r = 0; r <= 2048 && !found; r += 16)
+            for (int a = 0; a < (r == 0 ? 1 : 16) && !found; ++a) {
+                int sx = int(r * std::cos(a * 0.3927)), sz = int(r * std::sin(a * 0.3927));
+                if (worldgen::isLand(*gen_, sx, sz, h)) {
+                    spawnX_ = sx;
+                    spawnZ_ = sz;
+                    found = true;
+                }
+            }
+    }
+    x = spawnX_ + 0.5;
+    y = highestBlock(spawnX_, spawnZ_) + 1.0;
+    z = spawnZ_ + 0.5;
 }
 
 void World::unloadUnused(const std::vector<ChunkPos>& keep) {

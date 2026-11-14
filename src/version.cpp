@@ -129,6 +129,18 @@ int Version::id(const std::string& packet) const {
     return it->second;
 }
 
+int Version::registryFind(const std::string& registry, const std::string& entry) const {
+    auto it = registries_.find(registry);
+    if (it == registries_.end()) return -1;
+    auto pos = std::find(it->second.begin(), it->second.end(), entry);
+    return pos == it->second.end() ? -1 : int(pos - it->second.begin());
+}
+
+int Version::registryCount(const std::string& registry) const {
+    auto it = registries_.find(registry);
+    return it == registries_.end() ? 0 : int(it->second.size());
+}
+
 int Version::registryIndex(const std::string& registry, const std::string& entry) const {
     auto it = registries_.find(registry);
     if (it == registries_.end()) return 0;

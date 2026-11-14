@@ -760,13 +760,16 @@ void Player::sendChunks() {
         });   // nächste zuletzt -> von hinten abarbeiten
     }
     if (chunkQueue_.empty()) return;
-    int batch = std::min<int>(16, int(chunkQueue_.size()));
+    // Höchstens 16 Chunks und etwa 20 ms pro Tick, damit neue Chunks den Server nicht ausbremsen
+    double t0 = nowSeconds();
+    int batch = 0;
     send("chunk_batch_start");
-    for (int i = 0; i < batch; ++i) {
+    while (batch < 16 && !chunkQueue_.empty() && (batch == 0 || nowSeconds() - t0 < 0.02)) {
         ChunkPos c = chunkQueue_.back();
         chunkQueue_.pop_back();
         conn->sendFrame(server.chunkFrame(c.x, c.z, *version));
         loadedChunks.insert(c);
+        ++batch;
     }
     Writer w;
     w.varint(batch);

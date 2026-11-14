@@ -42,6 +42,7 @@ public:
     int x, z;
     std::array<std::unique_ptr<std::vector<uint16_t>>, SECTIONS> sections;
     std::array<int, 256> heights;                     // höchster nicht-Luft-Block je Spalte
+    std::array<uint8_t, 16> biomes{};                 // Biom je 4x4-Feld (Index in worldgen::biomeNames(), 0 = Ebene)
     std::map<std::tuple<int, int, int>, std::string> blockEntities;   // lokale Position -> Typ
     std::unordered_map<int, Bytes> frames;            // Protokoll -> fertiges Chunk-Paket
 
@@ -77,6 +78,8 @@ private:
     std::unordered_map<ChunkPos, std::unique_ptr<Chunk>, ChunkPosHash> chunks_;
     std::unordered_map<ChunkPos, std::map<std::tuple<int, int, int>, int>, ChunkPosHash> changes_;
     bool dirty_ = false;
+    bool spawnFound_ = false;
+    int spawnX_ = 0, spawnZ_ = 0;
     void load();
 };
 

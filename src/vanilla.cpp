@@ -11,6 +11,7 @@
 #include "data.hpp"
 #include "entity.hpp"
 #include "mobs.hpp"
+#include "worldmap.hpp"
 #include "objects.hpp"
 #include "placement.hpp"
 #include "physics.hpp"
@@ -1037,6 +1038,30 @@ void init(Server& server) {
                   }
                   return out;
               }});
+    cmds.add({"karte", "Zeichnet eine Weltkarte als PNG (karte.png im Server-Ordner)", "/karte [größe] [x z] [höhe für Schnitt]", {"map"}, true,
+              [&server](CommandSender& s, const std::vector<std::string>& a) {
+                  int size = 512, cx = 0, cz = 0, slice = 99999;
+                  if (a.size() >= 4) slice = std::atoi(a[3].c_str());
+                  try {
+                      if (!a.empty()) size = std::stoi(a[0]);
+                      if (a.size() >= 3) {
+                          cx = std::stoi(a[1]);
+                          cz = std::stoi(a[2]);
+                      } else if (Player* p = s.asPlayer()) {
+                          cx = int(std::floor(p->x));
+                          cz = int(std::floor(p->z));
+                      }
+                  } catch (...) {
+                      throw CommandError("Benutzung: /karte [größe] [x z]");
+                  }
+                  size = std::max(64, std::min(2048, size));
+                  double t0 = nowSeconds();
+                  std::string file = joinPath(server.root(), "karte.png");
+                  if (!worldmap::render(server.world(), cx, cz, size, file, slice)) throw CommandError("Karte konnte nicht gespeichert werden");
+                  s.sendMessage(sec("a") + "Karte " + std::to_string(size) + "x" + std::to_string(size) + " um " + std::to_string(cx) + " " +
+                                std::to_string(cz) + " gespeichert: karte.png (" + fmtDouble(nowSeconds() - t0, 1) + " s)");
+              },
+              nullptr});
     cmds.add({"clear", "Leert das Inventar", "/clear [spieler] [item]", {}, true,
               [target](CommandSender& s, const std::vector<std::string>& a) {
                   Player* t = target(s, a, 0);

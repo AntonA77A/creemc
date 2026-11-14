@@ -49,6 +49,8 @@ public:
     int id(const std::string& packet) const;
     bool has(const std::string& packet) const { return ids.count(packet) > 0; }
     int registryIndex(const std::string& registry, const std::string& entry) const;
+    int registryFind(const std::string& registry, const std::string& entry) const;   // -1 = gibt es nicht
+    int registryCount(const std::string& registry) const;
     std::optional<int> itemId(const std::string& name) const;
     std::string itemName(int id) const;
     std::optional<int> entityType(const std::string& name) const;
